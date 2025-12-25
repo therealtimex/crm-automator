@@ -5,6 +5,7 @@
 *.iml
 .vscode/
 */__pycache__
+eml/__pycache__
 
 # dependencies
 /node_modules
