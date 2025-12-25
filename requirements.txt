@@ -1,0 +1,8 @@
+openai>=1.0.0
+instructor
+python-dotenv
+requests
+beautifulsoup4
+email-reply-parser
+markdownify
+duckduckgo-search
