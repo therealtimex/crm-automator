@@ -4,6 +4,7 @@
 .idea/
 *.iml
 .vscode/
+__pycache__
 
 # dependencies
 /node_modules
