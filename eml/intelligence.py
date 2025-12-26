@@ -271,22 +271,205 @@ class IntelligenceLayer:
             return text
 
     def web_search_company(self, query: str) -> Optional[CompanyDetails]:
-        logger.info(f"Performing web search for: {query}")
+        """
+        Multi-source company enrichment with priority:
+        1. Website scraping (if domain detected in query)
+        2. Multi-provider search (DuckDuckGo -> Serper -> SerpAPI)
+        """
+        logger.info(f"Enriching company data for: {query}")
+        
+        # Try to extract domain from query
+        domain = self._extract_domain_from_query(query)
+        
+        # Priority 1: Scrape website if domain found
+        if domain:
+            scraped_data = self._scrape_website(domain)
+            if scraped_data:
+                return scraped_data
+        
+        # Priority 2: Fallback to search providers
+        provider_order = os.environ.get("SEARCH_PROVIDERS", "duckduckgo,serper,serpapi").split(",")
+        
+        for provider in provider_order:
+            provider = provider.strip().lower()
+            try:
+                results = self._search_with_provider(provider, query)
+                if results:
+                    return self._parse_search_results(results)
+            except Exception as e:
+                logger.warning(f"{provider} search failed: {e}, trying next provider...")
+                continue
+        
+        logger.error(f"All enrichment methods failed for query: {query}")
+        return None
+    
+    def _extract_domain_from_query(self, query: str) -> Optional[str]:
+        """Extract domain from search query if present."""
+        import re
+        # Look for patterns like "care.org.vn" or "example.com"
+        domain_pattern = r'\b([a-z0-9-]+\.)+[a-z]{2,}\b'
+        matches = re.findall(domain_pattern, query.lower())
+        return matches[0] if matches else None
+    
+    def _scrape_website(self, domain: str) -> Optional[CompanyDetails]:
+        """
+        Scrape company website using Crawl4AI for rich data extraction.
+        Targets: homepage, /about, /contact pages.
+        """
+        try:
+            import asyncio
+            from crawl4ai import AsyncWebCrawler
+            
+            # Run async scraping in sync context
+            return asyncio.run(self._async_scrape_website(domain))
+        except ImportError:
+            logger.warning("crawl4ai not installed. Run: pip install crawl4ai")
+            return None
+        except Exception as e:
+            logger.warning(f"Website scraping failed for {domain}: {e}")
+            return None
+    
+    async def _async_scrape_website(self, domain: str) -> Optional[CompanyDetails]:
+        """Async website scraping with Crawl4AI."""
+        from crawl4ai import AsyncWebCrawler
+        
+        urls_to_try = [
+            f"https://{domain}",
+            f"https://{domain}/about",
+            f"https://{domain}/about-us",
+            f"https://{domain}/contact",
+        ]
+        
+        combined_content = []
+        
+        async with AsyncWebCrawler(verbose=False) as crawler:
+            for url in urls_to_try:
+                try:
+                    result = await crawler.arun(
+                        url=url,
+                        word_count_threshold=10,
+                        bypass_cache=True,
+                        timeout=8000  # 8 seconds
+                    )
+                    
+                    if result.success and result.markdown:
+                        # Limit content per page to avoid overwhelming LLM
+                        content = result.markdown[:2000]
+                        combined_content.append(f"### {url}\n{content}")
+                        
+                        # Stop after collecting enough data
+                        if len(combined_content) >= 2:
+                            break
+                except Exception as e:
+                    logger.debug(f"Failed to scrape {url}: {e}")
+                    continue
+        
+        if not combined_content:
+            return None
+        
+        # Parse scraped content with LLM
+        full_text = "\n\n".join(combined_content)
+        system_prompt = "Extract structured company information from the following website content."
+        
+        try:
+            return self.client.chat.completions.create(
+                model=self.model,
+                response_model=CompanyDetails,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": full_text}
+                ]
+            )
+        except Exception as e:
+            logger.error(f"LLM parsing error for scraped content: {e}")
+            return None
+    
+    def _search_with_provider(self, provider: str, query: str, max_results: int = 3) -> Optional[List[Dict]]:
+        """Execute search with specified provider."""
+        
+        if provider == "duckduckgo":
+            return self._search_duckduckgo(query, max_results)
+        elif provider == "serper":
+            return self._search_serper(query, max_results)
+        elif provider == "serpapi":
+            return self._search_serpapi(query, max_results)
+        else:
+            logger.warning(f"Unknown search provider: {provider}")
+            return None
+    
+    def _search_duckduckgo(self, query: str, max_results: int) -> Optional[List[Dict]]:
+        """DuckDuckGo search (free, no API key needed)."""
         try:
             from duckduckgo_search import DDGS
             with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=3))
-                if results:
-                    combined_text = "\n".join([r['body'] for r in results])
-                    system_prompt = "Parse the following search results into a structured CompanyDetails object."
-                    return self.client.chat.completions.create(
-                        model=self.model,
-                        response_model=CompanyDetails,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": combined_text}
-                        ]
-                    )
+                results = list(ddgs.text(query, max_results=max_results))
+                return [{"title": r.get("title", ""), "snippet": r.get("body", "")} for r in results]
+        except ImportError:
+            logger.error("duckduckgo-search not installed. Run: pip install duckduckgo-search")
+            return None
+    
+    def _search_serper(self, query: str, max_results: int) -> Optional[List[Dict]]:
+        """Serper.dev search (paid, requires SERPER_API_KEY)."""
+        api_key = os.environ.get("SERPER_API_KEY")
+        if not api_key:
+            logger.warning("SERPER_API_KEY not set, skipping Serper")
+            return None
+        
+        try:
+            import requests
+            response = requests.post(
+                "https://google.serper.dev/search",
+                headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+                json={"q": query, "num": max_results},
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            organic = data.get("organic", [])
+            return [{"title": r.get("title", ""), "snippet": r.get("snippet", "")} for r in organic[:max_results]]
         except Exception as e:
-            logger.warning(f"Web search failed: {e}")
-        return None
+            logger.error(f"Serper API error: {e}")
+            return None
+    
+    def _search_serpapi(self, query: str, max_results: int) -> Optional[List[Dict]]:
+        """SerpAPI search (paid, requires SERPAPI_KEY)."""
+        api_key = os.environ.get("SERPAPI_KEY")
+        if not api_key:
+            logger.warning("SERPAPI_KEY not set, skipping SerpAPI")
+            return None
+        
+        try:
+            import requests
+            response = requests.get(
+                "https://serpapi.com/search",
+                params={"q": query, "api_key": api_key, "num": max_results, "engine": "google"},
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            organic = data.get("organic_results", [])
+            return [{"title": r.get("title", ""), "snippet": r.get("snippet", "")} for r in organic[:max_results]]
+        except Exception as e:
+            logger.error(f"SerpAPI error: {e}")
+            return None
+    
+    def _parse_search_results(self, results: List[Dict]) -> Optional[CompanyDetails]:
+        """Parse search results into CompanyDetails using LLM."""
+        if not results:
+            return None
+        
+        combined_text = "\n\n".join([f"**{r['title']}**\n{r['snippet']}" for r in results])
+        system_prompt = "Parse the following search results into a structured CompanyDetails object."
+        
+        try:
+            return self.client.chat.completions.create(
+                model=self.model,
+                response_model=CompanyDetails,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": combined_text}
+                ]
+            )
+        except Exception as e:
+            logger.error(f"LLM parsing error: {e}")
+            return None
