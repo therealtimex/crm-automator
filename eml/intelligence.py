@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Literal
 from pydantic import BaseModel, Field
 import instructor
 import openai
@@ -19,13 +19,13 @@ class Contact(BaseModel):
     title: Optional[str] = None
     background: Optional[str] = None
     linkedin_url: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[Literal['qualified', 'unqualified', 'duplicate', 'spam', 'test']] = Field(None, description="Qualification status")
 
 class CompanyDetails(BaseModel):
     name: str
     sector: Optional[str] = None
     size: Optional[int] = None
-    revenue: Optional[str] = None
+    revenue: Optional[Literal['0-1M', '1M-10M', '10M-50M', '50M-100M', '100M+', 'unknown']] = None
     description: Optional[str] = None
     website: Optional[str] = None
     linkedin_url: Optional[str] = None
@@ -38,16 +38,16 @@ class CompanyDetails(BaseModel):
     tax_identifier: Optional[str] = None
     
     # New fields from SQL Update
-    lifecycle_stage: Optional[str] = None
-    company_type: Optional[str] = None
-    industry: Optional[str] = None
+    lifecycle_stage: Optional[Literal['prospect', 'customer', 'churned', 'lost', 'archived']] = None
+    company_type: Optional[Literal['customer', 'prospect', 'partner', 'vendor', 'competitor', 'internal']] = None
+    industry: Optional[Literal['SaaS', 'E-commerce', 'Healthcare', 'Fintech', 'Manufacturing', 'Consulting', 'Real Estate', 'Education']] = None
     employee_count: Optional[int] = None
     founded_year: Optional[int] = None
     social_profiles: Optional[Dict[str, str]] = Field(default_factory=dict, description="Map of network type to URL (e.g., twitter: ...)")
     logo_url: Optional[str] = None
     context_links: Optional[Dict[str, str]] = None
-    external_heartbeat_status: Optional[str] = None
-    internal_heartbeat_status: Optional[str] = None
+    external_heartbeat_status: Optional[Literal['healthy', 'risky', 'dead', 'unknown']] = None
+    internal_heartbeat_status: Optional[Literal['engaged', 'quiet', 'at_risk', 'unresponsive']] = None
     email: Optional[str] = None
 
 class ExtractedTask(BaseModel):
