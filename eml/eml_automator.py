@@ -3,10 +3,6 @@ import email
 import logging
 from dotenv import load_dotenv
 
-# --- Environment Configuration (CRITICAL: Load before other imports) ---
-load_dotenv()
-load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
-
 from email import policy
 from email.parser import BytesParser
 from email.utils import getaddresses
@@ -23,10 +19,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-# --- Configuration (Loaded from Environment) ---
-CRM_API_BASE_URL = os.environ.get("CRM_API_BASE_URL")
-CRM_API_KEY = os.environ.get("CRM_API_KEY")
 
 class EMLProcessor:
     def __init__(self, crm_client: RealTimeXClient, intelligence: IntelligenceLayer, persistence: PersistenceLayer):
@@ -391,6 +383,14 @@ def main():
     import argparse
     import sys
 
+    # Set up basic logging before anything else
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+    # Load environment variables (current directory .env find-up)
+    load_dotenv()
+    # Also look for .env in the same directory as the script for dev convenience
+    load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+
     parser = argparse.ArgumentParser(description="Process EML files and sync to RealTimeX CRM.")
     parser.add_argument("eml_path", help="Path to the .eml file to process")
     parser.add_argument("--api-key", help="RealTimeX API Key (overrides CRM_API_KEY env)")
@@ -412,16 +412,12 @@ def main():
     if args.env_file:
         if os.path.exists(args.env_file):
             load_dotenv(args.env_file, override=True)
-            # Re-read global config that are evaluated here
-            # Assuming CRM_API_BASE_URL and CRM_API_KEY are defined at module level
-            CRM_API_BASE_URL = os.environ.get("CRM_API_BASE_URL")
-            CRM_API_KEY = os.environ.get("CRM_API_KEY")
         else:
             logger.warning(f"Specified --env-file not found: {args.env_file}")
 
     # Priority: Flag > EnvVar > Default
-    final_api_key = args.api_key or CRM_API_KEY
-    final_base_url = args.base_url or CRM_API_BASE_URL
+    final_api_key = args.api_key or os.environ.get("CRM_API_KEY")
+    final_base_url = args.base_url or os.environ.get("CRM_API_BASE_URL")
     final_llm_url = args.llm_url or os.environ.get("LLM_BASE_URL")
     final_llm_model = args.llm_model or os.environ.get("LLM_MODEL")
 

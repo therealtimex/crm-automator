@@ -455,7 +455,7 @@ class IntelligenceLayer:
     
     def _search_serpapi(self, query: str, max_results: int) -> Optional[List[Dict]]:
         """SerpAPI search (paid, requires SERPAPI_KEY)."""
-        api_key = os.environ.get("SERPAPI_KEY")
+        api_key = os.environ.get("SERPAPI_KEY") or os.environ.get("SERPAPI_API_KEY")
         if not api_key:
             logger.warning("SERPAPI_KEY not set, skipping SerpAPI")
             return None
