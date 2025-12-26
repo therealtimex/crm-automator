@@ -105,10 +105,27 @@ python3 eml/eml_automator.py email.eml --env-file .env
 
 ### Option 3: Package Install (Editable)
 
+## Sandboxed & Restricted Environments
+
+If you are running `eml-automator` in a restricted environment (e.g., Docker with read-only root, AWS Lambda, or a dedicated sandbox), keep the following in mind:
+
+### 1. Writable Database
+By default, the persistence database (`eml_processing.db`) is created in your **current working directory**. 
+
+If the current directory is not writable, configure a specific path:
 ```bash
-pip install -e .
-eml-automator email.eml --env-file .env
+export PERSISTENCE_DB_PATH=/tmp/eml_processing.db
 ```
+
+### 2. Browser Cache (Scraping)
+If using `crawl4ai` for company enrichment, it may attempt to download browser binaries or create profile caches. In strictly read-only environments, it is recommended to pre-install dependencies or disable scraping fallback:
+```bash
+# Disable scraping by only providing search providers that don't need a browser
+export SEARCH_PROVIDERS=serper,serpapi
+```
+
+### 3. Environment Variables
+In a sandbox, you should ideally pass configuration via environment variables instead of a `.env` file to avoid file-system dependency.
 
 ### Dependencies
 

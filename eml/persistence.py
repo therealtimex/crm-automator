@@ -12,7 +12,8 @@ class PersistenceLayer:
         if env_db_path:
             self.db_path = env_db_path
         else:
-            self.db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test-run", db_name)
+            # Sandbox safety: Default to current working directory instead of package dir
+            self.db_path = os.path.join(os.getcwd(), "eml_processing.db")
         self._init_db()
 
     def _init_db(self):
