@@ -17,7 +17,7 @@ The **CRM Automator** is a modular, agentic toolkit designed to transform unstru
 -   **🧩 Modular Architecture**: Decoupled *Ingestion* (EML/Text), *Intelligence* (LLM Extraction), and *Integration* (CRM Sync).
 -   **🤖 Agent-Ready**: Components like `IntelligenceLayer` and `RealTimeXClient` are designed to be imported as tools for frameworks like LangChain or Autogen.
 -   **🛡️ Idempotent & Safe**: Implements "Search-before-Update" patterns and SQLite-based state tracking to prevent duplicate records.
--   **🧹 Smart Cleaning Pipeline**: Automatically converts bloated HTML emails into clean Markdown and strips noise (disclaimers, unsubscribe links) to optimize LLM context usage.
+-   **🧹 Smart Cleaning Pipeline**: Automatically converts bloaty HTML into clean Markdown, strips noise, and **resolves tracking links** (e.g., unwraps Proofpoint/Safelinks and resolves HubSpot redirects) to ensure accurate URL extraction.
 -   **🧠 OpenAI-Compatible**: Works independently with OpenAI, Anthropic, or local LLMs (via LM Studio/Ollama) using `instructor`.
 
 ## Installation

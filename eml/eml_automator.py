@@ -206,15 +206,30 @@ class EMLProcessor:
             # Note
             activity_text = f"Subject: {headers.get('Subject')}\n\n"
             if analysis:
-                activity_text += f"[Sentiment: {analysis.sentiment}] [Intent: {analysis.intent}]\n"
-                activity_text += f"Summary: {analysis.summary}\n\n"
-            activity_text += body
-            self.crm.log_activity(primary_contact_id, activity_text)
+                activity_text += f"**Sentiment**: {analysis.sentiment} 🟢  |  **Intent**: {analysis.intent} 🎯\n\n"
+                activity_text += f"{analysis.summary}\n\n"
+            
+            activity_text += "[Original EML file attached below]"
+
+            # Prepare attachment (Multipart)
+            files = []
+            try:
+                with open(file_path, "rb") as f:
+                    file_content = f.read()
+                
+                filename = os.path.basename(file_path)
+                # Format for requests: (field_name, (filename, file_object, content_type))
+                files.append(("files", (filename, file_content, "message/rfc822")))
+            except Exception as e:
+                logger.error(f"Failed to prepare EML attachment: {e}")
+                activity_text += "\n[Error preparing EML attachment]"
+
+            self.crm.log_activity(activity_text, contact_id=primary_contact_id, files=files, status="New")
             
             # Tasks
             if analysis and analysis.suggested_tasks:
                 for task in analysis.suggested_tasks:
-                    self.crm.create_task(primary_contact_id, task.description, task.due_date, task.priority)
+                    self.crm.create_task(primary_contact_id, task.description, task.due_date, task.priority, status=task.status)
             
             # Deal
             if analysis and analysis.deal_info and analysis.intent in ["Sales", "Demo"] and primary_company_id:

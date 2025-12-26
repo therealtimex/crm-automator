@@ -29,7 +29,11 @@ class RealTimeXClient:
         allowed_fields = {
             "name", "sector", "size", "linkedin_url", "website", "phone_number", 
             "address", "zipcode", "city", "stateAbbr", "sales_id", "context_links", 
-            "country", "description", "revenue", "tax_identifier"
+            "country", "description", "revenue", "tax_identifier",
+            # New fields
+            "lifecycle_stage", "company_type", "industry", "revenue_range", 
+            "employee_count", "founded_year", "social_profiles", "logo_url", 
+            "external_heartbeat_status", "internal_heartbeat_status", "email"
         }
         filtered_kwargs = {k: v for k, v in kwargs.items() if k in allowed_fields}
 
@@ -141,43 +145,68 @@ class RealTimeXClient:
             logger.error(f"Error upserting contact: {e}")
         return None
 
-    def log_activity(self, contact_id: int, text: str, activity_type: str = "contact_note", **kwargs):
-        # Specific fields for activity based on contactNotes/companyNotes/dealNotes SQL
-        allowed_fields = {"type", "contact_id", "deal_id", "company_id", "text", "sales_id", "status", "date"}
+    def log_activity(self, text: str, activity_type: str = "contact_note", contact_id: Optional[int] = None, files: Optional[List] = None, **kwargs):
+        # Allowed fields based on API definition
+        allowed_fields = {"type", "contact_id", "deal_id", "company_id", "task_id", "text", "sales_id", "status", "date", "attachments"}
+        
         payload = {
             "type": activity_type,
-            "contact_id": contact_id,
             "text": text
         }
+        
+        if contact_id:
+            payload["contact_id"] = contact_id
+            
         # Add any other allowed fields from kwargs
         for k, v in kwargs.items():
             if k in allowed_fields:
                 payload[k] = v
 
         try:
-            response = requests.post(
-                f"{self.base_url}/api-v1-activities",
-                headers=self.headers,
-                json=payload,
-                timeout=10
-            )
+            if files:
+                # Multipart/form-data request
+                # Remove Content-Type header so requests can set it to multipart/form-data with boundary
+                headers = self.headers.copy()
+                headers.pop("Content-Type", None)
+                
+                # 'data' argument expects a dictionary of fields. 
+                # Note: non-string values might need casting to string for multipart
+                data = {k: str(v) for k, v in payload.items()}
+                
+                response = requests.post(
+                    f"{self.base_url}/api-v1-activities",
+                    headers=headers,
+                    data=data,
+                    files=files,
+                    timeout=30 # Larger timeout for uploads
+                )
+            else:
+                # Standard JSON request
+                response = requests.post(
+                    f"{self.base_url}/api-v1-activities",
+                    headers=self.headers,
+                    json=payload,
+                    timeout=10
+                )
+            
             return response.status_code in [200, 201]
         except Exception as e:
             print(f"Error logging activity: {e}")
             return False
 
-    def create_task(self, contact_id: int, description: str, due_date: Optional[str] = None, priority: str = "Medium", **kwargs):
-        # Specific fields for task based on tasks SQL
-        allowed_fields = {"type", "contact_id", "text", "due_date", "sales_id", "done_date"}
+    def create_task(self, contact_id: int, description: str, due_date: Optional[str] = None, priority: str = "Medium", status: str = "todo", task_type: str = "Email", **kwargs):
+        # API v1.3.0: Tasks now have their own endpoint /api-v1-tasks
+        # Allowed fields based on API definition
+        allowed_fields = {"text", "type", "contact_id", "due_date", "priority", "status", "sales_id", "assigned_to"}
+        
         payload = {
-            "type": "task",
             "contact_id": contact_id,
-            "text": description,
-            "due_date": due_date
+            "text": description, # Maps to 'text' in API
+            "type": task_type,   # Maps to 'type' (e.g. Call, Email, Meeting)
+            "due_date": due_date,
+            "priority": priority,
+            "status": status
         }
-        # Add priority if it's mapped in the API even if not in raw SQL
-        if priority:
-            payload["priority"] = priority
 
         # Add any other allowed fields from kwargs
         for k, v in kwargs.items():
@@ -186,7 +215,7 @@ class RealTimeXClient:
 
         try:
             response = requests.post(
-                f"{self.base_url}/api-v1-activities",
+                f"{self.base_url}/api-v1-tasks",
                 headers=self.headers,
                 json=payload,
                 timeout=10
@@ -226,3 +255,4 @@ class RealTimeXClient:
         except Exception as e:
             print(f"Error creating deal: {e}")
         return None
+

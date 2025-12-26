@@ -36,11 +36,25 @@ class CompanyDetails(BaseModel):
     country: Optional[str] = None
     phone_number: Optional[str] = None
     tax_identifier: Optional[str] = None
+    
+    # New fields from SQL Update
+    lifecycle_stage: Optional[str] = None
+    company_type: Optional[str] = None
+    industry: Optional[str] = None
+    employee_count: Optional[int] = None
+    founded_year: Optional[int] = None
+    social_profiles: Optional[Dict[str, str]] = Field(default_factory=dict, description="Map of network type to URL (e.g., twitter: ...)")
+    logo_url: Optional[str] = None
+    context_links: Optional[Dict[str, str]] = None
+    external_heartbeat_status: Optional[str] = None
+    internal_heartbeat_status: Optional[str] = None
+    email: Optional[str] = None
 
 class ExtractedTask(BaseModel):
     description: str
     due_date: Optional[str] = Field(description="ISO format date grounded by document context")
     priority: str = Field(description="High, Medium, or Low")
+    status: str = Field(default="todo", description="Task status: todo, in_progress, done")
 
 class DealInfo(BaseModel):
     name: str = Field(description="Descriptive name for the deal")
@@ -109,7 +123,13 @@ class IntelligenceLayer:
         """Cleans and compresses text for LLM ingestion."""
         import re
         
-        # 0. Convert HTML to Markdown if it looks like HTML
+        # 0. Unwrap "Safe Links" (Proofpoint, Outlook, etc.)
+        text = self.unwrap_safe_links(text)
+        
+        # 0.1 High-Accuracy Social Link Resolution (Resolve tracking links)
+        text = self.resolve_social_links(text)
+
+        # 1. Convert HTML to Markdown if it looks like HTML
         if "<" in text and ">" in text:
             try:
                 from markdownify import markdownify as md
@@ -145,6 +165,110 @@ class IntelligenceLayer:
             text = text[:lead] + "\n\n[... content truncated due to length ...]\n\n" + text[-tail:]
             
         return text.strip()
+
+    def unwrap_safe_links(self, text: str) -> str:
+        """
+        Detects and replaces 'safe' links (Proofpoint, Outlook Safelinks) 
+        with their original decoded URLs.
+        """
+        import re
+        from urllib.parse import unquote, parse_qs, urlparse
+
+        def replace_match(match):
+            full_url = match.group(0)
+            try:
+                parsed = urlparse(full_url)
+                query = parse_qs(parsed.query)
+                
+                # Proofpoint (u) / Outlook (url)
+                real_url = None
+                if "proofpoint.com" in parsed.netloc and "u" in query:
+                    real_url = query["u"][0]
+                elif "outlook.com" in parsed.netloc and "url" in query:
+                    real_url = query["url"][0]
+                
+                # Fallback: Google redirects, generic redirects often use 'q' or 'url'
+                elif "google.com" in parsed.netloc and "url" in query:
+                    real_url = query["url"][0]
+
+                if real_url:
+                    # Often these parameters are typically also valid URLs, but might be encoded 
+                    # specifically. parse_qs does basic decoding, but verify.
+                    # Fix recurring encodings if necessary (safelinks often doesn't double encode, but proofpoint might use special translation)
+                    # For V2 proofpoint, 'u' is effectively the URL but '-' is replaced by '%' sometimes.
+                    # However, standard unquote usually is sufficient for the query param value.
+                    return unquote(real_url)
+            except Exception:
+                pass
+            return full_url
+
+        # Regex to capture http/s URLs that look like typical safe links
+        # We catch broadly then filter in the callback
+        safe_link_pattern = r'https?://[a-zA-Z0-9.-]+(?:\.proofpoint\.com|\.outlook\.com|\.google\.com)[^\s")\]]*'
+        
+        return re.sub(safe_link_pattern, replace_match, text)
+
+    def resolve_social_links(self, text: str) -> str:
+        """
+        Parses HTML, finds links that look like social profiles but might be tracking URLs,
+        and resolves them to their canonical targets via HTTP requests.
+        """
+        if not ("<" in text and ">" in text):
+            return text
+            
+        try:
+            from bs4 import BeautifulSoup
+            import requests
+            
+            soup = BeautifulSoup(text, "html.parser")
+            social_domains = ["linkedin", "twitter", "x.com", "facebook", "instagram"]
+            
+            # Find candidate links: Either their text or href contains social keywords
+            # but they don't look like clean social URLs yet (e.g. they are tracking links)
+            candidates = []
+            for a in soup.find_all("a", href=True):
+                href = a["href"].lower()
+                link_text = a.get_text().lower()
+                
+                # Check if this is likely a social link (by text content or title)
+                is_social_context = any(d in link_text or d in a.get("title", "").lower() or d in a.get("alt", "").lower() for d in social_domains)
+                
+                # OR check if href contains a known tracking domain for social (generic check)
+                # But safer to rely on context + href mismatch.
+                
+                # If it's a social context but the href is NOT a simple social URL, verify it
+                if is_social_context:
+                    # Skip if it's already a clean social link
+                    if any(f"{d}.com" in href for d in social_domains):
+                        continue
+                    candidates.append(a)
+            
+            if not candidates:
+                return text
+
+            # Resolve candidates
+            logger.info(f"Attempting to resolve {len(candidates)} potential social tracking links...")
+            for a in candidates:
+                try:
+                    original_url = a["href"]
+                    # Quick HEAD request to follow redirects
+                    # Short timeout because we don't want to hang
+                    resp = requests.head(original_url, allow_redirects=True, timeout=3.0)
+                    final_url = resp.url
+                    
+                    if final_url != original_url:
+                        logger.debug(f"Resolved social link: {original_url[:30]}... -> {final_url}")
+                        a["href"] = final_url
+                except Exception as e:
+                    logger.warning(f"Failed to resolve social link {a['href'][:30]}...: {e}")
+            
+            return str(soup)
+            
+        except ImportError:
+            return text
+        except Exception as e:
+            logger.warning(f"Error during social link resolution: {e}")
+            return text
 
     def web_search_company(self, query: str) -> Optional[CompanyDetails]:
         logger.info(f"Performing web search for: {query}")
