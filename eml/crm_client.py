@@ -193,6 +193,43 @@ class RealTimeXClient:
         except Exception as e:
             print(f"Error logging activity: {e}")
             return False
+    
+    def _upload_and_get_attachment_url(self, files: List) -> Optional[str]:
+        """
+        Upload files via a temporary activity and extract the attachment URL.
+        This allows reusing the same uploaded file across multiple notes.
+        """
+        try:
+            headers = self.headers.copy()
+            headers.pop("Content-Type", None)
+            
+            # Create minimal payload for upload
+            data = {
+                "type": "contact_note",
+                "text": "[Temporary upload for attachment URL extraction]",
+                "contact_id": "1"  # Temporary, will be deleted
+            }
+            
+            response = requests.post(
+                f"{self.base_url}/api-v1-activities",
+                headers=headers,
+                data=data,
+                files=files,
+                timeout=30
+            )
+            
+            if response.status_code in [200, 201]:
+                result = response.json()
+                # Extract attachment URL from response
+                if result.get("data") and result["data"].get("attachments"):
+                    attachments = result["data"]["attachments"]
+                    if len(attachments) > 0:
+                        return attachments[0].get("src")  # Return first attachment URL
+            
+            return None
+        except Exception as e:
+            logger.error(f"Error uploading attachment: {e}")
+            return None
 
     def create_task(self, contact_id: int, description: str, due_date: Optional[str] = None, priority: str = "Medium", status: str = "todo", task_type: str = "Email", **kwargs):
         # API v1.3.0: Tasks now have their own endpoint /api-v1-tasks

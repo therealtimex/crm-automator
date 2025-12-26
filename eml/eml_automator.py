@@ -202,42 +202,99 @@ class EMLProcessor:
         if not primary_contact_id:
             primary_contact_id = resolved_contacts[0][1]
 
-        if primary_contact_id:
-            # Note
-            activity_text = f"Subject: {headers.get('Subject')}\n\n"
+        # Extract email timestamp for accurate activity dating
+        email_date = headers.get('Date', None)
+        
+        # Upload EML once and get the attachment URL
+        eml_attachment_url = None
+        filename = os.path.basename(file_path)
+        
+        try:
+            with open(file_path, "rb") as f:
+                file_content = f.read()
+            
+            # Upload via multipart to get URL back
+            files_payload = [("files", (filename, file_content, "message/rfc822"))]
+            
+            # Create a temporary note to upload the file and get URL
+            temp_response = self.crm._upload_and_get_attachment_url(files_payload)
+            if temp_response:
+                eml_attachment_url = temp_response
+        except Exception as e:
+            logger.error(f"Failed to upload EML attachment: {e}")
+        
+        # Create notes for ALL participants
+        all_contact_ids = [cid for _, cid in resolved_contacts if cid]
+        
+        for contact_id in all_contact_ids:
+            is_sender = (contact_id == primary_contact_id)
+            
+            # Personalize note text based on role
+            if is_sender:
+                activity_text = f"📧 **Email Sent**\n\nSubject: {headers.get('Subject')}\n\n"
+            else:
+                activity_text = f"📨 **Email Received**\n\nSubject: {headers.get('Subject')}\n\n"
+            
             if analysis:
                 activity_text += f"**Sentiment**: {analysis.sentiment} 🟢  |  **Intent**: {analysis.intent} 🎯\n\n"
                 activity_text += f"{analysis.summary}\n\n"
             
             activity_text += "[Original EML file attached below]"
-
-            # Prepare attachment (Multipart)
-            files = []
-            try:
-                with open(file_path, "rb") as f:
-                    file_content = f.read()
+            
+            # Create note with shared attachment URL
+            note_kwargs = {
+                "contact_id": contact_id,
+                "status": "New"
+            }
+            
+            if email_date:
+                note_kwargs["date"] = email_date
+            
+            if eml_attachment_url:
+                note_kwargs["attachments"] = [{
+                    "url": eml_attachment_url,
+                    "name": filename,
+                    "type": "message/rfc822"
+                }]
+            
+            self.crm.log_activity(activity_text, **note_kwargs)
+        
+        # Optional: Create company-level note if primary company exists
+        if primary_company_id and analysis:
+            company_note = f"📧 **Email Activity**\n\nSubject: {headers.get('Subject')}\n\n"
+            company_note += f"Participants: {len(all_contact_ids)} contacts\n\n"
+            company_note += f"{analysis.summary}\n\n"
+            company_note += "[Original EML file attached below]"
+            
+            company_kwargs = {
+                "activity_type": "company_note",
+                "company_id": primary_company_id,
+            }
+            
+            if email_date:
+                company_kwargs["date"] = email_date
                 
-                filename = os.path.basename(file_path)
-                # Format for requests: (field_name, (filename, file_object, content_type))
-                files.append(("files", (filename, file_content, "message/rfc822")))
-            except Exception as e:
-                logger.error(f"Failed to prepare EML attachment: {e}")
-                activity_text += "\n[Error preparing EML attachment]"
-
-            self.crm.log_activity(activity_text, contact_id=primary_contact_id, files=files, status="New")
+            if eml_attachment_url:
+                company_kwargs["attachments"] = [{
+                    "url": eml_attachment_url,
+                    "name": filename,
+                    "type": "message/rfc822"
+                }]
             
-            # Tasks
-            if analysis and analysis.suggested_tasks:
-                for task in analysis.suggested_tasks:
-                    self.crm.create_task(primary_contact_id, task.description, task.due_date, task.priority, status=task.status)
-            
-            # Deal
-            if analysis and analysis.deal_info and analysis.intent in ["Sales", "Demo"] and primary_company_id:
-                deal_kwargs = analysis.deal_info.model_dump(exclude={"name", "amount", "stage"})
-                self.crm.create_deal(
-                    primary_company_id, 
-                    [cid for _, cid in resolved_contacts], 
-                    analysis.deal_info.name, 
+            self.crm.log_activity(company_note, **company_kwargs)
+        
+        # Tasks (only for primary contact)
+        if primary_contact_id and analysis and analysis.suggested_tasks:
+            for task in analysis.suggested_tasks:
+                self.crm.create_task(primary_contact_id, task.description, task.due_date, task.priority, status=task.status)
+        
+        # Deal
+        if analysis and analysis.deal_info and analysis.intent in ["Sales", "Demo"] and primary_company_id:
+            deal_kwargs = analysis.deal_info.model_dump(exclude={"name", "amount", "stage"})
+            self.crm.create_deal(
+                primary_company_id, 
+                [cid for _, cid in resolved_contacts], 
+                analysis.deal_info.name, 
                     analysis.deal_info.amount or 0, 
                     analysis.deal_info.stage,
                     **deal_kwargs
