@@ -33,6 +33,9 @@ class EMLProcessor:
         self.crm = crm_client
         self.ai = intelligence
         self.db = persistence
+        # Load internal domains and specific emails for filtering (comma-separated lists)
+        self.internal_domains = [d.strip().lower() for d in os.environ.get("INTERNAL_DOMAINS", "").split(",") if d.strip()]
+        self.internal_emails = [e.strip().lower() for e in os.environ.get("INTERNAL_EMAILS", "").split(",") if e.strip()]
 
     def parse_eml(self, file_path: str):
         try:
@@ -54,48 +57,70 @@ class EMLProcessor:
         
         body = ""
         html_body = ""
+        attachments = []
         
         if msg.is_multipart():
             for part in msg.walk():
                 content_type = part.get_content_type()
-                charset = part.get_content_charset() or 'utf-8'
-                try:
-                    payload = part.get_payload(decode=True).decode(charset, errors='ignore')
-                    if content_type == 'text/plain':
-                        body = payload
-                    elif content_type == 'text/html':
-                        html_body = payload
-                except:
-                    continue
+                disposition = str(part.get("Content-Disposition"))
+                filename = part.get_filename()
+                
+                if filename:
+                    attachments.append(filename)
+                
+                # Check for body content
+                if "attachment" not in disposition:
+                    charset = part.get_content_charset() or 'utf-8'
+                    try:
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            decoded_payload = payload.decode(charset, errors='ignore')
+                            if content_type == 'text/plain':
+                                body = decoded_payload
+                            elif content_type == 'text/html':
+                                html_body = decoded_payload
+                    except:
+                        continue
         else:
-            charset = msg.get_content_charset() or 'utf-8'
+            charset = msg_charset = msg.get_content_charset() or 'utf-8'
             payload = msg.get_payload(decode=True).decode(charset, errors='ignore')
             if msg.get_content_type() == 'text/html':
                 html_body = payload
             else:
                 body = payload
         
+        content_to_analyze = ""
         # Prefer HTML for structural conversion if available, otherwise use plain body
         if html_body:
             # We still do a quick BS4 pass to remove scripts/styles before passing to AI
             soup = BeautifulSoup(html_body, "html.parser")
             for script_or_style in soup(["script", "style"]):
                 script_or_style.decompose()
-            # We return the partially cleaned HTML to allow IntelligenceLayer._smart_clean to use markdownify
-            return headers, str(soup)
-        
-        cleaned_body = EmailReplyParser.read(body).text
-        return headers, cleaned_body
+            content_to_analyze = str(soup)
+        else:
+            content_to_analyze = EmailReplyParser.read(body).text
+            
+        return headers, content_to_analyze, attachments
 
     def process(self, file_path: str, force: bool = False):
-        headers, body = self.parse_eml(file_path)
+        headers, body, attachments = self.parse_eml(file_path)
         message_id = headers.get("Message-ID")
         
         if not force and self.db.is_already_processed(message_id):
             logger.info(f"Skipping already processed email: {message_id}")
             return
 
-        analysis = self.ai.analyze_text(body, context_date=headers.get("Date", "Unknown"))
+        # Prepare metadata for intelligence layer
+        metadata = {
+            "From": headers.get('From', 'Unknown'),
+            "To": headers.get('To', 'Unknown'),
+            "Subject": headers.get('Subject', 'No Subject'),
+        }
+        if headers.get('Cc'): metadata["Cc"] = headers.get('Cc')
+        if attachments:
+            metadata["Attachments"] = ", ".join(attachments)
+
+        analysis = self.ai.analyze_text(body, context_date=headers.get("Date", "Unknown"), metadata=metadata)
         if not analysis:
             logger.warning("Intelligence layer failed to return analysis. Proceeding with caution.")
         
@@ -115,19 +140,47 @@ class EMLProcessor:
         
         logger.info(f"Parsed Participants: {participants}")
         
+        # Prepare extraction mapping
+        extracted_info_map = {}
+        if analysis:
+            # Map primary sender
+            if analysis.sender_info.email:
+                extracted_info_map[analysis.sender_info.email.lower()] = analysis.sender_info
+            
+            # Map others
+            for other in analysis.other_contacts:
+                if other.email:
+                    extracted_info_map[other.email.lower()] = other
+
         primary_company_id = None
         resolved_contacts = []
         company_cache = {}
         contact_cache = {}
         
         for name, email_addr in participants:
+            email_lower = email_addr.lower()
             domain = email_addr.split("@")[-1] if "@" in email_addr else ""
+            is_internal = (domain.lower() in self.internal_domains) or (email_lower in self.internal_emails)
+            
             company_name = domain
             company_kwargs = {}
             is_sender = (email_addr == sender_raw[1])
             
-            if analysis and is_sender:
+            # Skip CRM record creation for internal domains
+            if is_internal:
+                logger.info(f"Skipping CRM record creation for internal domain participant: {email_addr}")
+                continue
+
+            # Get extracted info for this specific participant
+            part_info = extracted_info_map.get(email_lower)
+            # Fallback for sender if email mapping failed
+            if not part_info and is_sender and analysis:
+                part_info = analysis.sender_info
+
+            if part_info:
+                # Company Enrichment
                 if analysis.company_search_query and not (analysis.company_details and analysis.company_details.sector):
+                    # We only search once per email
                     search_results = self.ai.web_search_company(analysis.company_search_query)
                     if search_results:
                         if not analysis.company_details:
@@ -137,9 +190,9 @@ class EMLProcessor:
                                 if not getattr(analysis.company_details, field):
                                     setattr(analysis.company_details, field, getattr(search_results, field))
 
-                if analysis.company_details:
+                if analysis.company_details and (is_sender or (part_info and part_info.company)):
                     company_name = analysis.company_details.name or company_name
-                    company_kwargs = analysis.company_details.model_dump(exclude={"name", "website"})
+                    company_kwargs = analysis.company_details.model_dump(exclude={"name", "website", "email"})
 
             # Upsert Company
             company_id = None
@@ -164,41 +217,49 @@ class EMLProcessor:
                 first_name = parts[0]
                 last_name = parts[1] if len(parts) > 1 else ""
 
-            if analysis and is_sender:
-                raw_info = analysis.sender_info.model_dump(exclude={"company"})
+            if part_info:
+                raw_info = part_info.model_dump(exclude={"company", "email"})
                 if raw_info.get("phone"):
                     contact_kwargs["phone_jsonb"] = [{"number": raw_info["phone"], "type": "Work"}]
                 for field in ["title", "background", "linkedin_url", "gender"]:
                     if raw_info.get(field):
                         contact_kwargs[field] = raw_info[field]
 
-            if email_addr in contact_cache:
-                cid = contact_cache[email_addr]
-            else:
-                cid = self.crm.upsert_contact(
-                    email_addr, 
-                    first_name=first_name, 
-                    last_name=last_name, 
-                    company_id=company_id or primary_company_id,
-                    **contact_kwargs
-                )
-                if cid:
-                    contact_cache[email_addr] = cid
-            
+            cid = self.crm.upsert_contact(
+                email_addr, 
+                first_name=first_name, 
+                last_name=last_name, 
+                company_id=company_id or primary_company_id,
+                **contact_kwargs
+            )
             if cid:
+                contact_cache[email_addr] = cid
                 resolved_contacts.append((email_addr, cid))
+
 
         # Action Logic
         if not resolved_contacts:
             logger.warning("No contacts resolved. Cannot link activities.")
             return
 
-        # primary contact is first recipient or sender
+        # primary contact selection
         primary_contact_id = None
-        for email, cid in resolved_contacts:
-            if email != sender_raw[1]:
-                primary_contact_id = cid
-                break
+        
+        # 1. Try LLM suggested primary contact
+        if analysis and analysis.primary_contact_email:
+            p_email = analysis.primary_contact_email.lower()
+            for email, cid in resolved_contacts:
+                if email.lower() == p_email:
+                    primary_contact_id = cid
+                    break
+        
+        # 2. Fallback: pick first recipient or sender
+        if not primary_contact_id:
+            for email, cid in resolved_contacts:
+                if email != sender_raw[1]:
+                    primary_contact_id = cid
+                    break
+        
         if not primary_contact_id:
             primary_contact_id = resolved_contacts[0][1]
 
@@ -219,14 +280,26 @@ class EMLProcessor:
         all_contact_ids = [cid for _, cid in resolved_contacts if cid]
         eml_attachment_url = None
         
+        # Determine the role of the sender for note context
+        sender_addr = sender_raw[1]
+        sender_email_lower = sender_addr.lower()
+        sender_domain = sender_addr.split("@")[-1].lower() if "@" in sender_addr else ""
+        sender_is_internal = (sender_domain in self.internal_domains) or (sender_email_lower in self.internal_emails)
+        sender_label = "Internal Staff" if sender_is_internal else "External Contact"
+
         for idx, contact_id in enumerate(all_contact_ids):
-            is_sender = (contact_id == primary_contact_id)
+            # Find the email for this contact_id to check if it matches primary recipient
+            contact_email = next((email for email, cid in resolved_contacts if cid == contact_id), "Unknown")
+            is_recipient = (contact_id == primary_contact_id)
             
             # Personalize note text based on role
-            if is_sender:
-                activity_text = f"📧 **Email Sent**\n\nSubject: {headers.get('Subject')}\n\n"
+            if sender_is_internal:
+                activity_text = f"📤 **Email from {sender_label}** ({sender_addr})\n"
+                activity_text += f"To: {headers.get('To')}\n"
             else:
-                activity_text = f"📨 **Email Received**\n\nSubject: {headers.get('Subject')}\n\n"
+                activity_text = f"📥 **Email from {sender_label}** ({sender_addr})\n"
+            
+            activity_text += f"Subject: {headers.get('Subject')}\n\n"
             
             if analysis:
                 activity_text += f"**Sentiment**: {analysis.sentiment} 🟢  |  **Intent**: {analysis.intent} 🎯\n\n"

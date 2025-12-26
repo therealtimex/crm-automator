@@ -64,6 +64,7 @@ class DealInfo(BaseModel):
     category: Optional[str] = None
 
 class SenderInfo(BaseModel):
+    email: Optional[str] = Field(None, description="The email address this info belongs to")
     phone: Optional[str] = None
     title: Optional[str] = Field(None, description="Job title or role")
     company: Optional[str] = None
@@ -75,7 +76,10 @@ class AnalysisResult(BaseModel):
     summary: str = Field(description="A brief summary of the email or text content")
     sentiment: str = Field(description="The emotional tone: Positive, Neutral, or Negative")
     intent: str = Field(description="The primary goal: Demo, Support, Sales, or Other")
+    language: str = Field(default="English", description="The primary language of the content (e.g., English, Vietnamese)")
+    primary_contact_email: Optional[str] = Field(None, description="The email address of the person who is the main focus of this activity (e.g., the customer)")
     sender_info: SenderInfo = Field(description="Detailed information about the person who sent or is the focus of the text")
+    other_contacts: List[SenderInfo] = Field(default_factory=list, description="Info for other people mentioned or participating in the thread")
     company_details: Optional[CompanyDetails] = Field(None, description="Structured details about the company mentioned, especially if it's the sender's company")
     company_search_query: Optional[str] = Field(None, description="A focused Google/Bing search query to find more info if company details are sparse in the text")
     suggested_tasks: List[ExtractedTask] = Field(description="Actionable items or tasks derived from the content, grounded to the context date")
@@ -95,16 +99,34 @@ class IntelligenceLayer:
             mode=instructor.Mode.MD_JSON
         )
 
-    def analyze_text(self, text: str, context_date: str = "Unknown") -> Optional[AnalysisResult]:
+    def analyze_text(self, text: str, context_date: str = "Unknown", metadata: Optional[Dict] = None) -> Optional[AnalysisResult]:
         logger.info(f"Analyzing content with context date: {context_date}")
         if not self.base_url:
              logger.error("Cannot analyze text: LLM_BASE_URL is not set")
              return None
 
         # Smart Cleaning Pipeline (Markdown-like & Noise Reduction)
-        cleaned_text = self._smart_clean(text)
+        # We only clean the main text/body, not the structured metadata
+        cleaned_body = self._smart_clean(text)
         
-        system_prompt = f"Extract CRM structured data from the provided text. Context Date is {context_date}."
+        full_prompt_text = ""
+        if metadata:
+            full_prompt_text += "--- METADATA ---\n"
+            for k, v in metadata.items():
+                full_prompt_text += f"{k}: {v}\n"
+            full_prompt_text += "\n--- CONTENT ---\n"
+        
+        full_prompt_text += cleaned_body
+
+        system_prompt = (
+            "You are a CRM Intelligence Agent. Extract structured data from the provided text.\n"
+            f"Context Date: {context_date}\n\n"
+            "Guidelines:\n"
+            "1. Analyze metadata headers (From, To, Cc, Subject) to understand the participants and core topic.\n"
+            "2. Attachment filenames provide critical context (e.g., 'Invoice' implies billing, 'Deck' implies sales).\n"
+            "3. If multiple messages are in a thread, focus on the latest interaction for sentiment/intent, but extract participant info from the whole context.\n"
+            "4. Identify the primary person of interest as 'sender_info' and any others in 'other_contacts'."
+        )
         
         try:
             return self.client.chat.completions.create(
@@ -112,7 +134,7 @@ class IntelligenceLayer:
                 response_model=AnalysisResult,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": cleaned_text}
+                    {"role": "user", "content": full_prompt_text}
                 ],
             )
         except Exception as e:

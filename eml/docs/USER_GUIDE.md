@@ -141,6 +141,10 @@ SERPAPI_KEY=your_serpapi_key    # Optional
 
 # Optional: Persistence
 PERSISTENCE_DB_PATH=./eml_processing.db
+
+# Optional: Internal Domain/Email Filtering (to skip upserting your own staff)
+INTERNAL_DOMAINS=yourcompany.com,partner.vn
+INTERNAL_EMAILS=sales.manager@gmail.com,support.temp@outlook.com
 ```
 
 ### API Scopes Required
@@ -248,7 +252,15 @@ Notes use the **email's Date header**, not processing time.
 - **Tasks**: Auto-generated follow-ups with due dates
 - **Deals**: Opportunity detection and creation
 
-### 🔍 Company Enrichment
+### �️ Internal vs External Contacts
+
+**Avoid CRM pollution from your own team:**
+
+- **Filtering**: Set `INTERNAL_DOMAINS` for company domains and `INTERNAL_EMAILS` for staff members using public domains (e.g., Gmail/Outlook).
+- **Smart Labels**: Notes are labeled `📤 Email from Internal Staff` or `📥 Email from External Contact`.
+- **Intelligent Linking**: Activities are linked to the most relevant customer contact, regardless of who sent the email.
+
+### �🔍 Company Enrichment
 
 **Multi-source data gathering:**
 
