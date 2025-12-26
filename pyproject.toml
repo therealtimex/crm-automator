@@ -1,6 +1,6 @@
 [project]
 name = "crm-automator"
-version = "1.4.0"
+version = "1.5.1"
 description = "AI-powered email processing and CRM automation"
 readme = "README.md"
 requires-python = ">=3.10"

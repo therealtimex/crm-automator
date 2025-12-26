@@ -205,28 +205,21 @@ class EMLProcessor:
         # Extract email timestamp for accurate activity dating
         email_date = headers.get('Date', None)
         
-        # Upload EML once and get the attachment URL
-        eml_attachment_url = None
+        # Prepare EML file content
         filename = os.path.basename(file_path)
+        file_content = None
         
         try:
             with open(file_path, "rb") as f:
                 file_content = f.read()
-            
-            # Upload via multipart to get URL back
-            files_payload = [("files", (filename, file_content, "message/rfc822"))]
-            
-            # Create a temporary note to upload the file and get URL
-            temp_response = self.crm._upload_and_get_attachment_url(files_payload)
-            if temp_response:
-                eml_attachment_url = temp_response
         except Exception as e:
-            logger.error(f"Failed to upload EML attachment: {e}")
+            logger.error(f"Failed to read EML file: {e}")
         
         # Create notes for ALL participants
         all_contact_ids = [cid for _, cid in resolved_contacts if cid]
+        eml_attachment_url = None
         
-        for contact_id in all_contact_ids:
+        for idx, contact_id in enumerate(all_contact_ids):
             is_sender = (contact_id == primary_contact_id)
             
             # Personalize note text based on role
@@ -241,7 +234,7 @@ class EMLProcessor:
             
             activity_text += "[Original EML file attached below]"
             
-            # Create note with shared attachment URL
+            # Create note
             note_kwargs = {
                 "contact_id": contact_id,
                 "status": "New"
@@ -250,17 +243,34 @@ class EMLProcessor:
             if email_date:
                 note_kwargs["date"] = email_date
             
-            if eml_attachment_url:
+            # First note: upload via multipart and extract URL
+            if idx == 0 and file_content:
+                files_payload = [("files", (filename, file_content, "message/rfc822"))]
+                note_kwargs["files"] = files_payload
+                
+                # Call log_activity and capture response to extract URL
+                success, response_data = self.crm.log_activity_with_response(activity_text, **note_kwargs)
+                
+                # Extract attachment URL from response
+                if success and response_data and response_data.get("data"):
+                    attachments = response_data["data"].get("attachments", [])
+                    if len(attachments) > 0:
+                        eml_attachment_url = attachments[0].get("src")
+            
+            # Subsequent notes: reuse URL
+            elif eml_attachment_url:
                 note_kwargs["attachments"] = [{
                     "url": eml_attachment_url,
-                    "name": filename,
+                    "title": filename,
                     "type": "message/rfc822"
                 }]
-            
-            self.crm.log_activity(activity_text, **note_kwargs)
+                self.crm.log_activity(activity_text, **note_kwargs)
+            else:
+                # Fallback if no URL available
+                self.crm.log_activity(activity_text, **note_kwargs)
         
         # Optional: Create company-level note if primary company exists
-        if primary_company_id and analysis:
+        if primary_company_id and analysis and eml_attachment_url:
             company_note = f"📧 **Email Activity**\n\nSubject: {headers.get('Subject')}\n\n"
             company_note += f"Participants: {len(all_contact_ids)} contacts\n\n"
             company_note += f"{analysis.summary}\n\n"
@@ -269,17 +279,15 @@ class EMLProcessor:
             company_kwargs = {
                 "activity_type": "company_note",
                 "company_id": primary_company_id,
+                "attachments": [{
+                    "url": eml_attachment_url,
+                    "title": filename,
+                    "type": "message/rfc822"
+                }]
             }
             
             if email_date:
                 company_kwargs["date"] = email_date
-                
-            if eml_attachment_url:
-                company_kwargs["attachments"] = [{
-                    "url": eml_attachment_url,
-                    "name": filename,
-                    "type": "message/rfc822"
-                }]
             
             self.crm.log_activity(company_note, **company_kwargs)
         
@@ -303,7 +311,10 @@ class EMLProcessor:
             self.db.mark_as_processed(message_id)
             logger.info(f"Successfully finished processing for EML.")
 
-if __name__ == "__main__":
+
+
+def main():
+    """Entry point for uvx/pip installation."""
     import argparse
     import sys
 
@@ -329,6 +340,7 @@ if __name__ == "__main__":
         if os.path.exists(args.env_file):
             load_dotenv(args.env_file, override=True)
             # Re-read global config that are evaluated here
+            # Assuming CRM_API_BASE_URL and CRM_API_KEY are defined at module level
             CRM_API_BASE_URL = os.environ.get("CRM_API_BASE_URL")
             CRM_API_KEY = os.environ.get("CRM_API_KEY")
         else:
@@ -358,3 +370,6 @@ if __name__ == "__main__":
     except Exception as e:
         logger.critical(f"Fatal error during processing: {e}", exc_info=True)
         sys.exit(1)
+
+if __name__ == "__main__":
+    main()

@@ -194,6 +194,59 @@ class RealTimeXClient:
             print(f"Error logging activity: {e}")
             return False
     
+    def log_activity_with_response(self, text: str, activity_type: str = "contact_note", contact_id: Optional[int] = None, files: Optional[List] = None, **kwargs):
+        """
+        Same as log_activity but returns (success, response_data) tuple.
+        Used to extract attachment URLs from the API response.
+        """
+        # Allowed fields based on API definition
+        allowed_fields = {"type", "contact_id", "deal_id", "company_id", "task_id", "text", "sales_id", "status", "date", "attachments"}
+        
+        payload = {
+            "type": activity_type,
+            "text": text
+        }
+        
+        if contact_id:
+            payload["contact_id"] = contact_id
+            
+        # Add any other allowed fields from kwargs
+        for k, v in kwargs.items():
+            if k in allowed_fields:
+                payload[k] = v
+
+        try:
+            if files:
+                # Multipart/form-data request
+                headers = self.headers.copy()
+                headers.pop("Content-Type", None)
+                
+                data = {k: str(v) for k, v in payload.items()}
+                
+                response = requests.post(
+                    f"{self.base_url}/api-v1-activities",
+                    headers=headers,
+                    data=data,
+                    files=files,
+                    timeout=30
+                )
+            else:
+                # Standard JSON request
+                response = requests.post(
+                    f"{self.base_url}/api-v1-activities",
+                    headers=self.headers,
+                    json=payload,
+                    timeout=10
+                )
+            
+            if response.status_code in [200, 201]:
+                return True, response.json()
+            else:
+                return False, None
+        except Exception as e:
+            print(f"Error logging activity: {e}")
+            return False, None
+    
     def _upload_and_get_attachment_url(self, files: List) -> Optional[str]:
         """
         Upload files via a temporary activity and extract the attachment URL.
