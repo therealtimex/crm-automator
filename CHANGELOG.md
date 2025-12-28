@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2025-12-28
+
+### Changed
+- **Activity Notes**: Added email timestamp to activity note content for better historical context
+  - Email date now displayed prominently in both contact-level and company-level notes
+  - Improves chronological accuracy when processing historical emails
+  - Clear distinction between email send/receive date and processing date
+
 ## [1.7.0] - 2025-12-27
 
 ### Added

@@ -309,7 +309,8 @@ class EMLProcessor:
             else:
                 activity_text = f"📥 **Email from {sender_label}** ({sender_addr})\n"
             
-            activity_text += f"Subject: {headers.get('Subject')}\n\n"
+            activity_text += f"Subject: {headers.get('Subject')}\n"
+            activity_text += f"Date: {email_date or 'Unknown'}\n\n"
             
             if analysis:
                 activity_text += f"**Sentiment**: {analysis.sentiment} 🟢  |  **Intent**: {analysis.intent} 🎯\n\n"
@@ -354,7 +355,8 @@ class EMLProcessor:
         
         # Optional: Create company-level note if primary company exists
         if primary_company_id and analysis and eml_attachment_url:
-            company_note = f"📧 **Email Activity**\n\nSubject: {headers.get('Subject')}\n\n"
+            company_note = f"📧 **Email Activity**\n\nSubject: {headers.get('Subject')}\n"
+            company_note += f"Date: {email_date or 'Unknown'}\n\n"
             company_note += f"Participants: {len(all_contact_ids)} contacts\n\n"
             company_note += f"{analysis.summary}\n\n"
             company_note += "[Original EML file attached below]"
