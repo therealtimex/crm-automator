@@ -423,12 +423,12 @@ class IntelligenceLayer:
     def _search_duckduckgo(self, query: str, max_results: int) -> Optional[List[Dict]]:
         """DuckDuckGo search (free, no API key needed)."""
         try:
-            from duckduckgo_search import DDGS
+            from ddgs import DDGS
             with DDGS() as ddgs:
                 results = list(ddgs.text(query, max_results=max_results))
                 return [{"title": r.get("title", ""), "snippet": r.get("body", "")} for r in results]
         except ImportError:
-            logger.error("duckduckgo-search not installed. Run: pip install duckduckgo-search")
+            logger.error("ddgs not installed. Run: pip install ddgs")
             return None
     
     def _search_serper(self, query: str, max_results: int) -> Optional[List[Dict]]:

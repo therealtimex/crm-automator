@@ -5,5 +5,5 @@ requests
 beautifulsoup4
 email-reply-parser
 markdownify
-duckduckgo-search
+ddgs
 crawl4ai>=0.7.0

@@ -1,6 +1,6 @@
 [project]
 name = "crm-automator"
-version = "1.7.2"
+version = "1.7.3"
 description = "AI-powered email processing and CRM automation"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +12,7 @@ dependencies = [
     "beautifulsoup4",
     "email-reply-parser",
     "markdownify",
-    "duckduckgo-search",
+    "ddgs",
     "crawl4ai>=0.7.0",
 ]
 
