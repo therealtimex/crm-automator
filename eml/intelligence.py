@@ -479,8 +479,10 @@ class IntelligenceLayer:
     def _parse_search_results(self, results: List[Dict]) -> Optional[CompanyDetails]:
         """Parse search results into CompanyDetails using LLM."""
         if not results:
+            logger.warning("No search results to parse")
             return None
         
+        logger.debug(f"Parsing {len(results)} search results")
         combined_text = "\n\n".join([f"**{r['title']}**\n{r['snippet']}" for r in results])
         system_prompt = "Parse the following search results into a structured CompanyDetails object."
         
@@ -494,7 +496,8 @@ class IntelligenceLayer:
                 ]
             )
         except Exception as e:
-            logger.error(f"LLM parsing error: {e}")
+            logger.error(f"LLM parsing error for search results: {e}")
+            logger.debug(f"Search results that failed to parse: {combined_text[:200]}...")
             return None
     def hydrate_from_eesa(self, eesa_data: Dict, metadata: Optional[Dict] = None) -> Optional[AnalysisResult]:
         """
@@ -546,9 +549,12 @@ class IntelligenceLayer:
         
         # 5. Company Details
         company_details = None
+        company_search_query = None
         orgs = extraction.get("entities", {}).get("organizations", [])
         if orgs and len(orgs) > 0:
             company_details = CompanyDetails(name=orgs[0])
+            # Trigger web enrichment if we only have the name
+            company_search_query = orgs[0]
             
         # 6. Deal Info
         deal_info = None
@@ -577,6 +583,7 @@ class IntelligenceLayer:
             sender_info=sender_info,
             other_contacts=[],
             company_details=company_details,
+            company_search_query=company_search_query,
             suggested_tasks=tasks,
             deal_info=deal_info
         )

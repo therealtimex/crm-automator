@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2025-12-28
+
+### Fixed
+- **EESA Web Enrichment**: Fixed web search enrichment for EESA-processed emails
+  - `hydrate_from_eesa()` now populates `company_search_query` to trigger web enrichment
+  - EESA emails now get the same company enrichment as LLM-analyzed emails
+  - Maintains feature parity between EESA and standard processing paths
+
+### Changed
+- **Logging**: Improved error logging for search result parsing failures
+  - Added debug logging for search result count and content
+  - Better visibility into why web enrichment might fail
+- **Documentation**: Updated `.env.example` with comprehensive parameter documentation
+  - All supported environment variables now documented
+  - Organized into logical sections with examples and descriptions
+
 ## [1.7.1] - 2025-12-28
 
 ### Changed
