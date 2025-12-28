@@ -296,3 +296,77 @@ Examples:
 - Adding EESA metadata support → MINOR version bump
 - Fixing email parsing bug → PATCH version bump
 - Changing `IntelligenceLayer.analyze()` signature → MAJOR version bump
+
+## Known Schema Gaps & Enrichment Limitations
+
+### Current Enrichment Coverage
+
+**What IS Enriched:**
+- ✅ Company web search (DuckDuckGo → Serper → SerpAPI fallback)
+- ✅ Website scraping (homepage, /about, /contact via Crawl4AI)
+- ✅ Basic contact info extraction from email headers
+- ✅ LLM-based entity extraction from email content
+
+**What is NOT Enriched:**
+- ❌ Contact-level enrichment (no LinkedIn/Clearbit/Hunter.io integration)
+- ❌ Social profiles extraction (no Twitter, Facebook, etc.)
+- ❌ Logo fetching (no Clearbit Logo API or favicon scraping)
+- ❌ Email validation (no DNS MX checks or validation APIs)
+- ❌ Phone number validation/formatting
+
+### CRM Schema vs. Data Model Gaps
+
+**Companies - Missing/Unmapped Fields:**
+```python
+# Fields in CRM API but not populated:
+- social_profiles (JSONB)      # Not extracted from websites
+- logo_url (text)               # Not fetched
+- industry (text)               # Different from sector, not mapped
+- employee_count (integer)      # Have "size" bracket, not exact count
+- founded_year (integer)        # Not extracted
+- external_id / external_system # No third-party enrichment IDs
+- lifecycle_stage (text)        # Not inferred from email intent
+- company_type (text)           # Not classified
+- email (text)                  # Company email not extracted
+```
+
+**Contacts - Missing/Unmapped Fields:**
+```python
+# Fields in CRM API but not populated:
+- gender (text)                        # Not extracted
+- email_validation_status (text)       # No validation performed
+- linkedin_profile_status (text)       # No verification
+- external_heartbeat_status (text)     # Not computed
+- phone_jsonb structure                # Formatted in crm_client, not model
+```
+
+### Field Mapping Notes
+
+**Automatic Mappings (handled in crm_client.py):**
+- `revenue` → `revenue_range` (model uses "revenue", CRM expects "revenue_range")
+- `phone` (str) → `phone_jsonb` ([{number: str, type: str}])
+- `email` (str) → `email_jsonb` ([{email: str, type: str}])
+
+**Manual Intervention Required:**
+- `size` (int) vs `employee_count` (int) - Different semantics
+- `sector` vs `industry` - May need separate classification
+
+### Future Enhancement Opportunities
+
+**Priority 1 - Contact Enrichment:**
+- Integrate Hunter.io API for email validation
+- Add LinkedIn profile scraping/API
+- Implement Clearbit Person API
+
+**Priority 2 - Company Enrichment:**
+- Add Clearbit Logo API for logo_url
+- Extract social profiles from scraped websites
+- Implement founded_year extraction from "About" pages
+
+**Priority 3 - Data Quality:**
+- Add email validation (regex + DNS MX)
+- Implement phone number formatting (libphonenumber)
+- Add lifecycle_stage inference from email intent
+
+---
+

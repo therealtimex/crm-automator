@@ -36,6 +36,10 @@ class RealTimeXClient:
             "external_heartbeat_status", "internal_heartbeat_status", "email"
         }
         filtered_kwargs = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        
+        # Field mapping: handle model field names → CRM API field names
+        if "revenue" in filtered_kwargs and "revenue_range" not in filtered_kwargs:
+            filtered_kwargs["revenue_range"] = filtered_kwargs.pop("revenue")
 
         # Cross-run deduplication: Search by website/domain first
         if website:
@@ -102,6 +106,12 @@ class RealTimeXClient:
             "email_jsonb", "phone_jsonb", "has_newsletter"
         }
         filtered_kwargs = {k: v for k, v in kwargs.items() if k in allowed_fields}
+
+        # Field mapping: handle model field names → CRM API field names
+        if "phone" in kwargs and "phone_jsonb" not in filtered_kwargs:
+            phone_val = kwargs["phone"]
+            if phone_val:
+                filtered_kwargs["phone_jsonb"] = [{"number": phone_val, "type": "Mobile"}]
 
         try:
             search_response = requests.get(

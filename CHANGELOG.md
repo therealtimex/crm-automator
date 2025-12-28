@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.5] - 2025-12-28
+
+### Changed
+- **Model Refactoring**: Renamed `SenderInfo` to `ParticipantInfo` to better reflect multi-contact extraction
+- **Multi-Contact Support**: Extraction now explicitly separates `first_name` and `last_name` for all participants
+- **Schema Alignment**: Fully aligned `CompanyDetails` with CRM `api-v1-companies` schema (added industry, employee_count, founded_year, social_profiles, logo_url, etc.)
+- **Cleanup**: Removed unused legacy `Contact` model classes
+
+### Fixed
+- **Name Extraction**: Improved reliability of contact name extraction by using LLM-extracted first/last names with header fallbacks
+- **Data Integrity**: Enforced consistent `ParticipantInfo` structure for all thread participants (To, Cc, Bcc)
+
+## [1.7.4] - 2025-12-28
+
+### Fixed
+- **Schema Alignment**: Fixed critical data model mismatches with CRM API
+  - Changed `Contact.email` from a list of dicts to a single string for better compatibility with email extraction
+  - Implemented automatic mapping for `revenue` model field to CRM's `revenue_range` field
+  - Improved phone number handling: intelligence `phone` field now correctly maps to CRM's `phone_jsonb` structure
+- **Documentation**: Added comprehensive documentation to `CLAUDE.md` detailing known schema gaps and enrichment limitations
+
 ## [1.7.3] - 2025-12-28
 
 ### Changed

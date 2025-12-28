@@ -227,24 +227,28 @@ class EMLProcessor:
                 first_name = parts[0]
                 last_name = parts[1] if len(parts) > 1 else ""
 
+            # Prepare Contact details
+            contact_kwargs = {}
             if part_info:
-                raw_info = part_info.model_dump(exclude={"company", "email"})
-                if raw_info.get("phone"):
-                    contact_kwargs["phone_jsonb"] = [{"number": raw_info["phone"], "type": "Work"}]
-                for field in ["title", "background", "linkedin_url", "gender"]:
-                    if raw_info.get(field):
-                        contact_kwargs[field] = raw_info[field]
+                # Use extracted first/last names if available, fall back to header-parsed
+                if part_info.first_name:
+                    first_name = part_info.first_name
+                if part_info.last_name:
+                    last_name = part_info.last_name
+                
+                # Exclude fields we handle separately or that don't go to contact
+                contact_kwargs = part_info.model_dump(exclude={"email", "first_name", "last_name", "company"})
 
-            cid = self.crm.upsert_contact(
-                email_addr, 
-                first_name=first_name, 
-                last_name=last_name, 
+            contact_id = self.crm.upsert_contact(
+                email_addr,
+                first_name=first_name,
+                last_name=last_name,
                 company_id=company_id or primary_company_id,
                 **contact_kwargs
             )
-            if cid:
-                contact_cache[email_addr] = cid
-                resolved_contacts.append((email_addr, cid))
+            if contact_id:
+                contact_cache[email_addr] = contact_id
+                resolved_contacts.append((email_addr, contact_id))
 
 
         # Action Logic

@@ -12,21 +12,12 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "qwen/qwen3-4b-2507"
 
 # --- Models ---
-class Contact(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: List[Dict[str, str]]
-    company_id: Optional[int] = None
-    title: Optional[str] = None
-    background: Optional[str] = None
-    linkedin_url: Optional[str] = None
-    status: Optional[Literal['qualified', 'unqualified', 'duplicate', 'spam', 'test']] = Field(None, description="Qualification status")
-
 class CompanyDetails(BaseModel):
     name: str
     sector: Optional[str] = None
     size: Optional[int] = None
     revenue: Optional[Literal['0-1M', '1M-10M', '10M-50M', '50M-100M', '100M+', 'unknown']] = None
+    revenue_range: Optional[str] = None  # Explicit mapping to CRM
     description: Optional[str] = None
     website: Optional[str] = None
     linkedin_url: Optional[str] = None
@@ -38,7 +29,7 @@ class CompanyDetails(BaseModel):
     phone_number: Optional[str] = None
     tax_identifier: Optional[str] = None
     
-    # New fields from SQL Update
+    # Alignment with CRM api-v1-companies
     lifecycle_stage: Optional[Literal['prospect', 'customer', 'churned', 'lost', 'archived']] = None
     company_type: Optional[Literal['customer', 'prospect', 'partner', 'vendor', 'competitor', 'internal']] = None
     industry: Optional[Literal['SaaS', 'E-commerce', 'Healthcare', 'Fintech', 'Manufacturing', 'Consulting', 'Real Estate', 'Education']] = None
@@ -64,14 +55,17 @@ class DealInfo(BaseModel):
     description: Optional[str] = Field(None, description="Detailed description of the deal opportunity")
     category: Optional[str] = None
 
-class SenderInfo(BaseModel):
+class ParticipantInfo(BaseModel):
     email: Optional[str] = Field(None, description="The email address this info belongs to")
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     phone: Optional[str] = None
     title: Optional[str] = Field(None, description="Job title or role")
     company: Optional[str] = None
     background: Optional[str] = Field(None, description="A brief biography or historical context about the contact")
     linkedin_url: Optional[str] = None
     gender: Optional[str] = None
+    status: Optional[Literal['qualified', 'unqualified', 'duplicate', 'spam', 'test']] = Field(None, description="Qualification status")
 
 class AnalysisResult(BaseModel):
     summary: str = Field(description="A brief summary of the email or text content")
@@ -79,8 +73,8 @@ class AnalysisResult(BaseModel):
     intent: str = Field(description="The primary goal: Demo, Support, Sales, or Other")
     language: str = Field(default="English", description="The primary language of the content (e.g., English, Vietnamese)")
     primary_contact_email: Optional[str] = Field(None, description="The email address of the person who is the main focus of this activity (e.g., the customer)")
-    sender_info: SenderInfo = Field(description="Detailed information about the person who sent or is the focus of the text")
-    other_contacts: List[SenderInfo] = Field(default_factory=list, description="Info for other people mentioned or participating in the thread")
+    sender_info: ParticipantInfo = Field(description="Detailed information about the email sender")
+    other_contacts: List[ParticipantInfo] = Field(default_factory=list, description="Info for other people mentioned or participating in the thread")
     company_details: Optional[CompanyDetails] = Field(None, description="Structured details about the company mentioned, especially if it's the sender's company")
     company_search_query: Optional[str] = Field(None, description="A focused Google/Bing search query to find more info if company details are sparse in the text")
     suggested_tasks: List[ExtractedTask] = Field(description="Actionable items or tasks derived from the content, grounded to the context date")
@@ -542,7 +536,7 @@ class IntelligenceLayer:
             
         # Try to find a name from EESA entities that matches? 
         # For MVP we just assume the first person if any is relevant, or leave blank.
-        sender_info = SenderInfo(
+        sender_info = ParticipantInfo(
             email=sender_email, 
             company=None
         )
