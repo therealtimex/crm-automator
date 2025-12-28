@@ -485,21 +485,33 @@ def main():
         target_files = []
         
         if os.path.isfile(input_path):
-            if os.path.exists(input_path) and os.path.getsize(input_path) > 0:
-                target_files.append(input_path)
-            else:
-                logger.error(f"Input file is empty or missing: {input_path}")
+            try:
+                if os.path.getsize(input_path) > 0:
+                    target_files.append(input_path)
+                else:
+                    logger.error(f"Input file is empty: {input_path}")
+                    sys.exit(1)
+            except OSError as e:
+                logger.error(f"Error accessing file {input_path}: {e}")
                 sys.exit(1)
         elif os.path.isdir(input_path):
             logger.info(f"Scanning directory for EML files: {input_path}")
-            for root, _, files in os.walk(input_path):
-                for file in files:
-                    if file.lower().endswith(".eml"):
-                        file_path = os.path.join(root, file)
-                        if os.path.getsize(file_path) > 0:
-                            target_files.append(file_path)
-                        else:
-                            logger.warning(f"Skipping empty EML file: {file}")
+            try:
+                for root, _, files in os.walk(input_path):
+                    for file in files:
+                        if file.lower().endswith(".eml"):
+                            file_path = os.path.join(root, file)
+                            try:
+                                if os.path.getsize(file_path) > 0:
+                                    target_files.append(file_path)
+                                else:
+                                    logger.warning(f"Skipping empty EML file: {file}")
+                            except OSError:
+                                logger.warning(f"Skipping inaccessible file: {file}")
+            except OSError as e:
+                logger.error(f"Error scanning directory {input_path}: {e}")
+                sys.exit(1)
+            
             logger.info(f"Found {len(target_files)} valid EML files.")
         else:
             logger.error(f"Input path does not exist: {input_path}")
@@ -512,7 +524,13 @@ def main():
         # Batch Processing Loop
         stats = {"success": 0, "failed": 0, "total": len(target_files)}
         
-        for file_path in tqdm(target_files, desc="Processing emails"):
+        for file_path in tqdm(
+            target_files, 
+            desc="Processing emails",
+            unit="email",
+            colour="green",
+            leave=True
+        ):
             file_name = os.path.basename(file_path)
             try:
                 processor.process(file_path, force=args.force)
