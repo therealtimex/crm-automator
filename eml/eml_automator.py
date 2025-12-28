@@ -1,6 +1,8 @@
 import os
 import email
 import logging
+import base64
+import json
 from dotenv import load_dotenv
 
 from email import policy
@@ -44,7 +46,11 @@ class EMLProcessor:
             "Cc": msg.get('cc', ''),
             "Bcc": msg.get('bcc', ''),
             "Date": msg.get('date', ''),
-            "Message-ID": msg.get('message-id', '')
+            "Message-ID": msg.get('message-id', ''),
+            "X-EESA-Category": msg.get('X-EESA-Category'),
+            "X-EESA-Summary": msg.get('X-EESA-Summary'),
+            "X-EESA-Processed-At": msg.get('X-EESA-Processed-At'),
+            "X-EESA-Raw-JSON": msg.get('X-EESA-Raw-JSON')
         }
         
         body = ""
@@ -112,7 +118,19 @@ class EMLProcessor:
         if attachments:
             metadata["Attachments"] = ", ".join(attachments)
 
-        analysis = self.ai.analyze_text(body, context_date=headers.get("Date", "Unknown"), metadata=metadata)
+        # Check for EESA metadata to skip LLM analysis
+        analysis = None
+        eesa_raw_json = headers.get("X-EESA-Raw-JSON")
+        if eesa_raw_json:
+            try:
+                eesa_data = json.loads(base64.b64decode(eesa_raw_json))
+                logger.info(f"Found EESA metadata for {message_id}, skipping LLM analysis.")
+                analysis = self.ai.hydrate_from_eesa(eesa_data, metadata=metadata)
+            except Exception as e:
+                logger.warning(f"Failed to decode EESA metadata: {e}. Falling back to LLM analysis.")
+        
+        if not analysis:
+            analysis = self.ai.analyze_text(body, context_date=headers.get("Date", "Unknown"), metadata=metadata)
         if not analysis:
             logger.warning("Intelligence layer failed to return analysis. Proceeding with caution.")
         

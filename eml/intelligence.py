@@ -2,6 +2,7 @@ import os
 import logging
 from typing import List, Optional, Dict, Literal
 from pydantic import BaseModel, Field
+from email.utils import parseaddr
 import instructor
 import openai
 
@@ -495,3 +496,87 @@ class IntelligenceLayer:
         except Exception as e:
             logger.error(f"LLM parsing error: {e}")
             return None
+    def hydrate_from_eesa(self, eesa_data: Dict, metadata: Optional[Dict] = None) -> Optional[AnalysisResult]:
+        """
+        Creates an AnalysisResult from EESA pre-processed metadata, skipping the LLM call.
+        """
+        classification = eesa_data.get("classification", {})
+        confidence = classification.get("confidence", 0.0)
+        logger.info(f"Hydrating AnalysisResult from EESA metadata (confidence: {confidence:.2f})")
+        
+        extraction = eesa_data.get("extraction", {})
+        
+        # 1. Map Intent
+        category = classification.get("category", "other").lower()
+        intent_map = {
+            "sales": "Sales",
+            "support": "Support",
+            "newsletter": "Other",
+            "transactional": "Other",
+            "demo": "Demo"
+        }
+        intent = intent_map.get(category, "Other")
+        
+        # 2. Map Summary
+        # EESA summary might use placeholders, we take it as is
+        summary = extraction.get("summary", "No summary provided by EESA.")
+        
+        # 3. Tasks
+        tasks = []
+        for action in extraction.get("action_items", []):
+            tasks.append(ExtractedTask(
+                description=action,
+                due_date=None,  # EESA doesn't provide due dates
+                priority="Medium",  # Default
+                status="todo"
+            ))
+            
+        # 4. Sender Info
+        # Extract just the email address from the From header
+        sender_email = None
+        if metadata:
+            sender_name, sender_email = parseaddr(metadata.get("From", ""))
+            
+        # Try to find a name from EESA entities that matches? 
+        # For MVP we just assume the first person if any is relevant, or leave blank.
+        sender_info = SenderInfo(
+            email=sender_email, 
+            company=None
+        )
+        
+        # 5. Company Details
+        company_details = None
+        orgs = extraction.get("entities", {}).get("organizations", [])
+        if orgs and len(orgs) > 0:
+            company_details = CompanyDetails(name=orgs[0])
+            
+        # 6. Deal Info
+        deal_info = None
+        monetary = extraction.get("entities", {}).get("monetary_values", [])
+        if intent in ["Sales", "Demo"]:
+            deal_name = f"{orgs[0]} - {intent}" if orgs else f"{intent} Opportunity"
+            amount = 0.0
+            # Very basic string to float cleanup
+            if monetary:
+                try:
+                    val = monetary[0].replace("$", "").replace(",", "")
+                    amount = float(val)
+                except:
+                    pass
+            
+            deal_info = DealInfo(
+                name=deal_name,
+                amount=amount,
+                stage="Discovery"
+            )
+            
+        return AnalysisResult(
+            summary=summary,
+            sentiment="Neutral", # specific default
+            intent=intent,
+            sender_info=sender_info,
+            other_contacts=[],
+            company_details=company_details,
+            suggested_tasks=tasks,
+            deal_info=deal_info
+        )
