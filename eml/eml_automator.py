@@ -1,3 +1,16 @@
+# /// script
+# dependencies = [
+#     "openai>=1.0.0",
+#     "instructor",
+#     "python-dotenv",
+#     "requests",
+#     "beautifulsoup4",
+#     "email-reply-parser",
+#     "markdownify",
+#     "ddgs",
+# ]
+# ///
+
 import os
 import email
 import logging
@@ -11,9 +24,14 @@ from email.utils import getaddresses
 from email_reply_parser import EmailReplyParser
 from bs4 import BeautifulSoup
 
-from crm_client import RealTimeXClient
-from intelligence import IntelligenceLayer, AnalysisResult
-from persistence import PersistenceLayer
+try:
+    from crm_client import RealTimeXClient
+    from intelligence import IntelligenceLayer, AnalysisResult
+    from persistence import PersistenceLayer
+except ImportError:
+    from eml.crm_client import RealTimeXClient
+    from eml.intelligence import IntelligenceLayer, AnalysisResult
+    from eml.persistence import PersistenceLayer
 
 # --- Production Logging Configuration ---
 logging.basicConfig(

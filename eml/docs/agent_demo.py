@@ -1,8 +1,12 @@
 import os
 import logging
 from dotenv import load_dotenv
-from crm_client import RealTimeXClient
-from intelligence import IntelligenceLayer, AnalysisResult
+try:
+    from crm_client import RealTimeXClient
+    from intelligence import IntelligenceLayer, AnalysisResult
+except ImportError:
+    from eml.crm_client import RealTimeXClient
+    from eml.intelligence import IntelligenceLayer, AnalysisResult
 
 # --- Environment Configuration (Default loading) ---
 load_dotenv()

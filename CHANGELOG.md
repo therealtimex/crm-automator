@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2025-12-28
+
+### Added
+- **`uv` Support**: Added `uv.lock` for extremely fast, reproducible dependency management and virtual environment synchronization.
+- **`uvx` Support**: Added PEP 723 inline script metadata to `eml/eml_automator.py` to enable zero-install execution (e.g., `uvx eml/eml_automator.py`).
+- **Modern Documentation**: Comprehensive updates to `CLAUDE.md` and `README.md` with updated installation and usage instructions using `uv`.
+
 ## [1.7.7] - 2025-12-28
 
 ### Fixed

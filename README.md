@@ -30,7 +30,11 @@ The **CRM Automator** is a modular, agentic toolkit designed to transform unstru
 
 2.  Install dependencies:
     ```bash
+    # Option A: Standard pip
     pip install -r requirements.txt
+
+    # Option B: Modern uv (Recommended)
+    uv sync
     ```
 
 3.  Configure environment:
@@ -42,10 +46,16 @@ The **CRM Automator** is a modular, agentic toolkit designed to transform unstru
 ## Usage
 
 ### 1. Process an Email (`.eml`)
-Run the automator on a single EML file to sync contacts, companies, and tasks to RealTimeX CRM.
+Run the automator on a single EML file.
 
+**Using uvx (Fastest, zero-install):**
 ```bash
-python3 em/eml_automator.py "path/to/email.eml" --env-file ".env"
+uvx eml/eml_automator.py "path/to/email.eml" --env-file ".env"
+```
+
+**Using standard python:**
+```bash
+python3 eml/eml_automator.py "path/to/email.eml" --env-file ".env"
 ```
 
 **Options:**
