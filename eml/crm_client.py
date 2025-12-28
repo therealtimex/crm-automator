@@ -38,8 +38,6 @@ class RealTimeXClient:
         filtered_kwargs = {k: v for k, v in kwargs.items() if k in allowed_fields}
         
         # Field mapping: handle model field names → CRM API field names
-        if "revenue" in filtered_kwargs and "revenue_range" not in filtered_kwargs:
-            filtered_kwargs["revenue_range"] = filtered_kwargs.pop("revenue")
 
         # Cross-run deduplication: Search by website/domain first
         if website:

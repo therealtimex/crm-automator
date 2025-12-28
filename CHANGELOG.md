@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.6] - 2025-12-28
+
+### Refined
+- **Model Consolidation**: Merged `revenue` and `revenue_range` into a single validated field
+- **Field Renaming**: Renamed `sender_info` → `primary_contact` and `other_contacts` → `additional_contacts` for better semantic clarity
+- **Enhanced Extraction**: Updated system prompt to explicitly prioritize first/last name extraction and social profiles
+- **Validation**: Added bounds validation for `founded_year` (1800-2100)
+
+### Fixed
+- **Redundancy Cleanup**: Removed manual field mapping logic in `crm_client.py` now handled by models
+- **Logic Sync**: Synchronized `eml_automator.py` with new model field names
+
 ## [1.7.5] - 2025-12-28
 
 ### Changed

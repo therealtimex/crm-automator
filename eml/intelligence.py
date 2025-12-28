@@ -16,8 +16,9 @@ class CompanyDetails(BaseModel):
     name: str
     sector: Optional[str] = None
     size: Optional[int] = None
-    revenue: Optional[Literal['0-1M', '1M-10M', '10M-50M', '50M-100M', '100M+', 'unknown']] = None
-    revenue_range: Optional[str] = None  # Explicit mapping to CRM
+    revenue_range: Optional[Literal['0-1M', '1M-10M', '10M-50M', '50M-100M', '100M+', 'unknown']] = Field(
+        None, description="Revenue bracket aligned with CRM schema"
+    )
     description: Optional[str] = None
     website: Optional[str] = None
     linkedin_url: Optional[str] = None
@@ -34,7 +35,9 @@ class CompanyDetails(BaseModel):
     company_type: Optional[Literal['customer', 'prospect', 'partner', 'vendor', 'competitor', 'internal']] = None
     industry: Optional[Literal['SaaS', 'E-commerce', 'Healthcare', 'Fintech', 'Manufacturing', 'Consulting', 'Real Estate', 'Education']] = None
     employee_count: Optional[int] = None
-    founded_year: Optional[int] = None
+    founded_year: Optional[int] = Field(
+        None, ge=1800, le=2100, description="Year the company was founded (1800-2100)"
+    )
     social_profiles: Optional[Dict[str, str]] = Field(default_factory=dict, description="Map of network type to URL (e.g., twitter: ...)")
     logo_url: Optional[str] = None
     context_links: Optional[Dict[str, str]] = None
@@ -73,8 +76,8 @@ class AnalysisResult(BaseModel):
     intent: str = Field(description="The primary goal: Demo, Support, Sales, or Other")
     language: str = Field(default="English", description="The primary language of the content (e.g., English, Vietnamese)")
     primary_contact_email: Optional[str] = Field(None, description="The email address of the person who is the main focus of this activity (e.g., the customer)")
-    sender_info: ParticipantInfo = Field(description="Detailed information about the email sender")
-    other_contacts: List[ParticipantInfo] = Field(default_factory=list, description="Info for other people mentioned or participating in the thread")
+    primary_contact: ParticipantInfo = Field(description="Primary person of interest (customer, lead, or main subject - NOT necessarily the email sender)")
+    additional_contacts: List[ParticipantInfo] = Field(default_factory=list, description="Other people mentioned or participating in the email thread")
     company_details: Optional[CompanyDetails] = Field(None, description="Structured details about the company mentioned, especially if it's the sender's company")
     company_search_query: Optional[str] = Field(None, description="A focused Google/Bing search query to find more info if company details are sparse in the text")
     suggested_tasks: List[ExtractedTask] = Field(description="Actionable items or tasks derived from the content, grounded to the context date")
@@ -117,10 +120,13 @@ class IntelligenceLayer:
             "You are a CRM Intelligence Agent. Extract structured data from the provided text.\n"
             f"Context Date: {context_date}\n\n"
             "Guidelines:\n"
-            "1. Analyze metadata headers (From, To, Cc, Subject) to understand the participants and core topic.\n"
-            "2. Attachment filenames provide critical context (e.g., 'Invoice' implies billing, 'Deck' implies sales).\n"
-            "3. If multiple messages are in a thread, focus on the latest interaction for sentiment/intent, but extract participant info from the whole context.\n"
-            "4. Identify the primary person of interest as 'sender_info' and any others in 'other_contacts'."
+            "1. Analyze metadata headers (From, To, Cc, Subject) to understand participants and topic.\n"
+            "2. Extract first_name and last_name for ALL participants from email signatures, body text, and headers.\n"
+            "3. Attachment filenames provide critical context (e.g., 'Invoice' -> billing, 'Deck' -> sales).\n"
+            "4. Extract social media profiles (LinkedIn, Twitter/X) from signatures and content.\n"
+            "5. Identify the primary person of interest (customer/lead) as 'primary_contact'.\n"
+            "6. List all other participants in 'additional_contacts'.\n"
+            "7. If multiple messages in a thread, focus on latest interaction for sentiment/intent."
         )
         
         try:
@@ -574,8 +580,9 @@ class IntelligenceLayer:
             summary=summary,
             sentiment="Neutral", # specific default
             intent=intent,
-            sender_info=sender_info,
-            other_contacts=[],
+            primary_contact_email=sender_email,
+            primary_contact=sender_info,
+            additional_contacts=[],
             company_details=company_details,
             company_search_query=company_search_query,
             suggested_tasks=tasks,

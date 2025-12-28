@@ -343,8 +343,11 @@ Examples:
 ### Field Mapping Notes
 
 **Automatic Mappings (handled in crm_client.py):**
-- `revenue` → `revenue_range` (model uses "revenue", CRM expects "revenue_range")
-- `phone` (str) → `phone_jsonb` ([{number: str, type: str}])
+- `phone` → `phone_jsonb` (model uses "phone", CRM expects "phone_jsonb" array)
+
+**Model Consolidation:**
+- `revenue_range`: Now a first-class field in the `CompanyDetails` model using `Literal`. Dedicated `revenue` field has been removed.
+- `primary_contact` / `additional_contacts`: Replaced `sender_info` / `other_contacts` to better reflect their roles in the email thread.
 - `email` (str) → `email_jsonb` ([{email: str, type: str}])
 
 **Manual Intervention Required:**

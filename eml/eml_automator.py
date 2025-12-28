@@ -153,12 +153,12 @@ class EMLProcessor:
         # Prepare extraction mapping
         extracted_info_map = {}
         if analysis:
-            # Map primary sender
-            if analysis.sender_info.email:
-                extracted_info_map[analysis.sender_info.email.lower()] = analysis.sender_info
+            # Map primary contact
+            if analysis.primary_contact and analysis.primary_contact.email:
+                extracted_info_map[analysis.primary_contact.email.lower()] = analysis.primary_contact
             
             # Map others
-            for other in analysis.other_contacts:
+            for other in analysis.additional_contacts:
                 if other.email:
                     extracted_info_map[other.email.lower()] = other
 
@@ -185,7 +185,7 @@ class EMLProcessor:
             part_info = extracted_info_map.get(email_lower)
             # Fallback for sender if email mapping failed
             if not part_info and is_sender and analysis:
-                part_info = analysis.sender_info
+                part_info = analysis.primary_contact
 
             if part_info:
                 # Company Enrichment
