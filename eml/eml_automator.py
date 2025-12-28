@@ -214,7 +214,7 @@ class EMLProcessor:
                         if not analysis.company_details:
                             analysis.company_details = search_results
                         else:
-                            for field in search_results.model_fields:
+                            for field in search_results.__class__.model_fields:
                                 if not getattr(analysis.company_details, field):
                                     setattr(analysis.company_details, field, getattr(search_results, field))
 
