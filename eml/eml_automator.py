@@ -8,6 +8,7 @@
 #     "email-reply-parser",
 #     "markdownify",
 #     "ddgs",
+#     "tqdm",
 # ]
 # ///
 
@@ -16,6 +17,7 @@ import email
 import logging
 import base64
 import json
+from tqdm import tqdm
 from dotenv import load_dotenv
 
 from email import policy
@@ -483,33 +485,40 @@ def main():
         target_files = []
         
         if os.path.isfile(input_path):
-            target_files.append(input_path)
+            if os.path.exists(input_path) and os.path.getsize(input_path) > 0:
+                target_files.append(input_path)
+            else:
+                logger.error(f"Input file is empty or missing: {input_path}")
+                sys.exit(1)
         elif os.path.isdir(input_path):
             logger.info(f"Scanning directory for EML files: {input_path}")
             for root, _, files in os.walk(input_path):
                 for file in files:
                     if file.lower().endswith(".eml"):
-                        target_files.append(os.path.join(root, file))
-            logger.info(f"Found {len(target_files)} EML files.")
+                        file_path = os.path.join(root, file)
+                        if os.path.getsize(file_path) > 0:
+                            target_files.append(file_path)
+                        else:
+                            logger.warning(f"Skipping empty EML file: {file}")
+            logger.info(f"Found {len(target_files)} valid EML files.")
         else:
             logger.error(f"Input path does not exist: {input_path}")
             sys.exit(1)
 
         if not target_files:
-            logger.warning("No EML files found to process.")
+            logger.warning("No valid EML files found to process.")
             return
 
         # Batch Processing Loop
         stats = {"success": 0, "failed": 0, "total": len(target_files)}
         
-        for i, file_path in enumerate(target_files, 1):
+        for file_path in tqdm(target_files, desc="Processing emails"):
             file_name = os.path.basename(file_path)
-            logger.info(f"[{i}/{stats['total']}] Processing: {file_name}")
             try:
                 processor.process(file_path, force=args.force)
                 stats["success"] += 1
             except Exception as e:
-                logger.error(f"Failed to process {file_name}: {e}")
+                tqdm.write(f"ERROR: Failed to process {file_name}: {e}")
                 stats["failed"] += 1
         
         # Summary Report

@@ -7,3 +7,4 @@ email-reply-parser
 markdownify
 ddgs
 crawl4ai>=0.7.0
+tqdm
