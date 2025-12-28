@@ -477,7 +477,48 @@ def main():
         persistence = PersistenceLayer()
         
         processor = EMLProcessor(client, intelligence, persistence)
-        processor.process(args.eml_path, force=args.force)
+        
+        # Resolve target files
+        input_path = args.eml_path
+        target_files = []
+        
+        if os.path.isfile(input_path):
+            target_files.append(input_path)
+        elif os.path.isdir(input_path):
+            logger.info(f"Scanning directory for EML files: {input_path}")
+            for root, _, files in os.walk(input_path):
+                for file in files:
+                    if file.lower().endswith(".eml"):
+                        target_files.append(os.path.join(root, file))
+            logger.info(f"Found {len(target_files)} EML files.")
+        else:
+            logger.error(f"Input path does not exist: {input_path}")
+            sys.exit(1)
+
+        if not target_files:
+            logger.warning("No EML files found to process.")
+            return
+
+        # Batch Processing Loop
+        stats = {"success": 0, "failed": 0, "total": len(target_files)}
+        
+        for i, file_path in enumerate(target_files, 1):
+            file_name = os.path.basename(file_path)
+            logger.info(f"[{i}/{stats['total']}] Processing: {file_name}")
+            try:
+                processor.process(file_path, force=args.force)
+                stats["success"] += 1
+            except Exception as e:
+                logger.error(f"Failed to process {file_name}: {e}")
+                stats["failed"] += 1
+        
+        # Summary Report
+        logger.info("--- Processing Summary ---")
+        logger.info(f"Total Files: {stats['total']}")
+        logger.info(f"Successfully Processed: {stats['success']}")
+        logger.info(f"Failed: {stats['failed']}")
+        logger.info("--------------------------")
+
     except Exception as e:
         logger.critical(f"Fatal error during processing: {e}", exc_info=True)
         sys.exit(1)

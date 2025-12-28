@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2025-12-28
+
+### Added
+- **Batch Directory Processing**: Support for passing a directory path to process all `.eml` files recursively.
+- **Filtering**: Automatically ignores non-EML files during directory scans.
+- **Summary Reporting**: Added a summary report at the end of runs showing success, failure, and total file counts.
+
 ## [1.8.0] - 2025-12-28
 
 ### Added

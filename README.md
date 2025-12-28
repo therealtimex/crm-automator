@@ -45,17 +45,17 @@ The **CRM Automator** is a modular, agentic toolkit designed to transform unstru
 
 ## Usage
 
-### 1. Process an Email (`.eml`)
-Run the automator on a single EML file.
+### 1. Process Emails (`.eml`)
+Run the automator on a single EML file or an entire directory recursively.
 
 **Using uvx (Fastest, zero-install):**
 ```bash
 uvx eml/eml_automator.py "path/to/email.eml" --env-file ".env"
 ```
 
-**Using standard python:**
+**Using a directory:**
 ```bash
-python3 eml/eml_automator.py "path/to/email.eml" --env-file ".env"
+uv run python eml/eml_automator.py "path/to/directory" --env-file ".env"
 ```
 
 **Options:**

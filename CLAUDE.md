@@ -19,22 +19,22 @@ uv sync
 uv lock
 ```
 
-### Process an Email
+### Process Emails
 ```bash
-# Basic usage
-python3 eml/eml_automator.py "path/to/email.eml" --env-file ".env"
-
-# Modern uv run (auto-managed virtualenv)
+# Process a single file
 uv run python eml/eml_automator.py "path/to/email.eml" --env-file ".env"
+
+# Process a directory recursively (skips non-EML files)
+uv run python eml/eml_automator.py "path/to/directory" --env-file ".env"
 
 # Instant tool run (zero-install uvx)
 uvx eml/eml_automator.py "path/to/email.eml" --env-file ".env"
 
 # Force re-processing (ignores persistence layer)
-uv run python eml/eml_automator.py "path/to/email.eml" --env-file ".env" --force
+uv run python eml/eml_automator.py "path/to/directory" --env-file ".env" --force
 
 # Verbose mode
-uv run python eml/eml_automator.py "path/to/email.eml" --env-file ".env" --verbose
+uv run python eml/eml_automator.py "path/to/directory" --env-file ".env" --verbose
 ```
 
 ### Run Generic Agent Demo
