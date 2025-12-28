@@ -50,12 +50,12 @@ def main(api_key: str, base_url: str, llm_url: Optional[str] = None):
     
     # Upsert Contact
     contact_kwargs = {}
-    if analysis.sender_info.phone:
-        contact_kwargs["phone_jsonb"] = [{"number": analysis.sender_info.phone, "type": "Work"}]
-    if analysis.sender_info.title:
-        contact_kwargs["title"] = analysis.sender_info.title
-    if analysis.sender_info.gender:
-        contact_kwargs["gender"] = analysis.sender_info.gender
+    if analysis.primary_contact.phone:
+        contact_kwargs["phone_jsonb"] = [{"number": analysis.primary_contact.phone, "type": "Work"}]
+    if analysis.primary_contact.title:
+        contact_kwargs["title"] = analysis.primary_contact.title
+    if analysis.primary_contact.gender:
+        contact_kwargs["gender"] = analysis.primary_contact.gender
 
     contact_id = crm.upsert_contact(
         "sarah.connor@cyberdyne.ai", 
