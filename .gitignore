@@ -48,3 +48,4 @@ dist/
 
 # Shadcn Registry
 public/r/
+eml_processing.db
