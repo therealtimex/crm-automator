@@ -71,10 +71,13 @@ def create_header_with_tabs(active_tab_name: str = 'dashboard'):
             suppressed_tab = ui.tab('Suppressed', icon='filter_list')
             config_tab = ui.tab('Configuration', icon='settings')
 
-        # Right: Stats indicator
-        stats = get_database_stats()
-        with ui.row().classes('items-center gap-2 px-3 py-1 bg-white/10 rounded'):
-            ui.label(f"{stats['total']} emails").classes('text-xs text-white/80')
+        # Right: Theme switcher
+        with ui.row().classes('items-center gap-2'):
+            ui.select(
+                ['Light', 'Dark', 'System'],
+                value='Light',
+                label='Theme'
+            ).classes('text-white').props('dark dense outlined').style('min-width: 120px')
 
     return tabs, dashboard_tab, upload_tab, analytics_tab, suppressed_tab, config_tab
 
@@ -832,67 +835,64 @@ def main_page():
                     create_stat_card('Suppressed', stats['suppressed'], 'block', 'warning')
                     create_stat_card('Failed', stats['failed'], 'error', 'negative')
 
-                # Two column layout for activity and actions
-                with ui.row().classes('w-full gap-4'):
-                    # Left column - Recent Activity
-                    with ui.card().classes('flex-1'):
-                        ui.label('Recent Activity').classes('text-h6 font-medium mb-3')
+                # Recent Activity - Full width
+                with ui.card().classes('w-full'):
+                    ui.label('Recent Activity').classes('text-h6 font-medium mb-3')
 
-                        # Get recent activity
-                        try:
-                            db = PersistenceLayer()
-                            recent_items = db.get_processing_history(limit=10)
+                    # Get recent activity
+                    try:
+                        db = PersistenceLayer()
+                        recent_items = db.get_processing_history(limit=10)
 
-                            if recent_items:
-                                for item in recent_items:
-                                    create_recent_activity_item(item)
-                            else:
-                                create_empty_state(
-                                    'inbox',
-                                    'No Activity Yet',
-                                    'Start processing emails to see activity here',
-                                    'Upload Emails',
-                                    '/upload'
-                                )
-                        except Exception as e:
-                            ui.label(f'Error loading activity: {e}').classes('text-negative text-caption')
+                        if recent_items:
+                            # Show table of activities
+                            columns = [
+                                {'name': 'status', 'label': 'Status', 'field': 'status', 'align': 'center', 'style': 'width: 100px'},
+                                {'name': 'subject', 'label': 'Subject', 'field': 'subject', 'align': 'left'},
+                                {'name': 'sender', 'label': 'Sender', 'field': 'sender', 'align': 'left'},
+                                {'name': 'time', 'label': 'Time', 'field': 'time', 'align': 'right', 'style': 'width: 120px'},
+                            ]
 
-                    # Right column - Quick Actions & Info
-                    with ui.column().classes('gap-4').style('width: 350px'):
-                        # Quick actions card
-                        with ui.card():
-                            ui.label('Quick Actions').classes('text-h6 font-medium mb-3')
+                            rows = []
+                            for item in recent_items:
+                                status = item.get('status') or 'skipped'
+                                subject = item.get('subject') or 'No Subject'
+                                sender = item.get('sender') or 'Unknown'
 
-                            with ui.column().classes('w-full gap-2'):
-                                ui.button('Upload & Process',
-                                         on_click=lambda: tabs.set_value(upload_tab),
-                                         icon='upload').props('color=primary').classes('w-full')
-                                ui.button('View Analytics',
-                                         on_click=lambda: tabs.set_value(analytics_tab),
-                                         icon='bar_chart').props('color=accent').classes('w-full')
-                                ui.button('View Suppressed',
-                                         on_click=lambda: tabs.set_value(suppressed_tab),
-                                         icon='filter_list').props('outline').classes('w-full')
-                                ui.button('Configuration',
-                                         on_click=lambda: tabs.set_value(config_tab),
-                                         icon='settings').props('outline').classes('w-full')
+                                # Format timestamp
+                                timestamp = item.get('processing_started_at') or ''
+                                time_str = 'Unknown'
+                                if timestamp:
+                                    try:
+                                        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                        time_str = dt.strftime('%b %d, %H:%M')
+                                    except:
+                                        pass
 
-                        # System info card
-                        with ui.card():
-                            ui.label('System Info').classes('text-h6 font-medium mb-3')
+                                # Status badge
+                                status_badges = {
+                                    'success': '✅ Success',
+                                    'suppressed': '🚫 Suppressed',
+                                    'failed': '❌ Failed',
+                                    'skipped': '⏭️ Skipped'
+                                }
 
-                            with ui.column().classes('w-full gap-2'):
-                                ui.label('📊 Processing Log').classes('font-medium')
-                                ui.label(f'{stats["total"]} total emails logged').classes('text-caption text-grey-7')
+                                rows.append({
+                                    'status': status_badges.get(status, status),
+                                    'subject': subject[:60] + '...' if len(subject) > 60 else subject,
+                                    'sender': sender[:40] + '...' if len(sender) > 40 else sender,
+                                    'time': time_str
+                                })
 
-                                ui.separator()
-
-                                ui.label('✅ Success Rate').classes('font-medium')
-                                if stats['total'] > 0:
-                                    success_rate = (stats['processed'] / stats['total']) * 100
-                                    ui.label(f'{success_rate:.1f}%').classes('text-caption text-grey-7')
-                                else:
-                                    ui.label('N/A').classes('text-caption text-grey-7')
+                            ui.table(columns=columns, rows=rows, row_key='subject').classes('w-full')
+                        else:
+                            # Empty state - Start fresh
+                            with ui.column().classes('w-full items-center justify-center p-12 gap-3'):
+                                ui.icon('inbox', size='xl').classes('text-grey-4')
+                                ui.label('No Activity Yet').classes('text-h6 text-grey-6')
+                                ui.label('Start fresh! Upload emails to begin processing.').classes('text-caption text-grey-5 text-center')
+                    except Exception as e:
+                        ui.label(f'Error loading activity: {e}').classes('text-negative text-caption')
 
         # ========== UPLOAD TAB ==========
         with ui.tab_panel(upload_tab):
