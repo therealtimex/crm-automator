@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.4] - 2025-12-31
+
+### Added
+- **SQLite Database Storage**: Migrated suppressed email logging from JSONL to SQLite for faster queries and better data management.
+- **Migration Script**: Added `migrate_jsonl_to_sqlite.py` for backward compatibility with existing JSONL logs.
+- **Database Indexes**: Added 4 indexes on `suppressed_emails` table (timestamp, category, reason, sender) for optimized query performance.
+- **Query API**: Added Python API methods for querying suppressed emails (`get_suppressed_emails()`, `get_suppression_stats()`).
+
+### Changed
+- **Documentation**: Updated all documentation (email-filtering.md, configuration.md, troubleshooting.md, CLAUDE.md, filters/README.md) to reflect SQLite storage with query examples.
+- **Persistence Layer**: Enhanced with suppressed email logging, statistics generation, and aggregation methods.
+- **Unified Storage**: Suppressed emails now stored in the same SQLite database as processed emails (`eml_processing.db`).
+
+### Removed
+- **JSONL Logging**: Removed JSONL file-based logging in favor of SQLite database.
+- **Configuration**: Removed obsolete `SUPPRESSED_LOG_PATH` environment variable (SQLite storage is automatic).
+
 ## [1.9.3] - 2025-12-28
 
 ### Changed
