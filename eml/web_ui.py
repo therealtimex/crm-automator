@@ -897,10 +897,8 @@ def main_page():
         # ========== UPLOAD TAB ==========
         with ui.tab_panel(upload_tab):
             with ui.column().classes('w-full p-6 gap-4'):
-                # File upload area
+                # File upload area - Drag & Drop
                 with ui.card().classes('w-full mb-4'):
-                    ui.label('Select EML Files').classes('text-h6 mb-2')
-
                     uploaded_files_list = ui.column().classes('w-full')
 
                     async def handle_upload(e):
@@ -919,19 +917,28 @@ def main_page():
                         # Update file list display
                         uploaded_files_list.clear()
                         with uploaded_files_list:
-                            ui.label(f'Selected {len(state.uploaded_files)} files').classes('text-positive mb-2')
+                            ui.label(f'✓ Selected {len(state.uploaded_files)} files').classes('text-positive font-medium mb-3')
                             for file in state.uploaded_files[:10]:  # Show first 10
-                                with ui.row().classes('items-center gap-2'):
-                                    ui.icon('check_circle', color='positive')
-                                    ui.label(file.name)
+                                with ui.row().classes('items-center gap-2 p-2 bg-grey-1 rounded'):
+                                    ui.icon('description', size='sm').classes('text-primary')
+                                    ui.label(file.name).classes('text-sm')
                             if len(state.uploaded_files) > 10:
-                                ui.label(f'...and {len(state.uploaded_files) - 10} more').classes('text-grey-7')
+                                ui.label(f'...and {len(state.uploaded_files) - 10} more').classes('text-caption text-grey-7 mt-2')
 
-                    ui.upload(
-                        on_upload=handle_upload,
-                        multiple=True,
-                        auto_upload=True
-                    ).props('accept=.eml').classes('w-full')
+                    # Drag & drop upload area
+                    with ui.column().classes('w-full items-center justify-center p-12 cursor-pointer').style(
+                        'border: 2px dashed #ccc; border-radius: 8px; background: #fafafa; transition: all 0.3s;'
+                    ):
+                        ui.icon('cloud_upload', size='xl').classes('text-primary mb-3')
+                        ui.label('Drag & drop EML files here').classes('text-h6 font-medium mb-1')
+                        ui.label('or click to browse').classes('text-caption text-grey-6 mb-4')
+
+                        ui.upload(
+                            on_upload=handle_upload,
+                            multiple=True,
+                            auto_upload=True,
+                            label='Choose Files'
+                        ).props('accept=.eml color=primary').classes('w-full max-w-xs')
 
                 # Processing options
                 with ui.card().classes('w-full mb-4'):
