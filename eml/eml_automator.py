@@ -470,7 +470,7 @@ def main():
     load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
     parser = argparse.ArgumentParser(description="Process EML files and sync to RealTimeX CRM.")
-    parser.add_argument("eml_path", help="Path to the .eml file to process")
+    parser.add_argument("eml_path", nargs="?", help="Path to the .eml file to process (optional if using --ui)")
     parser.add_argument("--api-key", help="RealTimeX API Key (overrides CRM_API_KEY env)")
     parser.add_argument("--base-url", help="RealTimeX Base URL (overrides CRM_API_BASE_URL env)")
     parser.add_argument("--db-path", help="Path to SQLite persistence DB (overrides PERSISTENCE_DB_PATH env)")
@@ -480,8 +480,28 @@ def main():
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging (DEBUG level)")
     parser.add_argument("--force", "-f", action="store_true", help="Force reprocessing even if EML was already processed")
     parser.add_argument("--show-filter-stats", action="store_true", help="Show email filtering statistics after processing")
-    
+    parser.add_argument("--ui", action="store_true", help="Launch web UI (localhost only, no authentication)")
+    parser.add_argument("--port", type=int, default=8080, help="Port for web UI (default: 8080)")
+
     args = parser.parse_args()
+
+    # Launch web UI if requested
+    if args.ui:
+        try:
+            from web_ui import run_ui
+        except ImportError:
+            from eml.web_ui import run_ui
+
+        logger.info("Launching web UI...")
+        logger.info(f"Opening browser at http://127.0.0.1:{args.port}")
+        run_ui(port=args.port)
+        return
+
+    # Validate eml_path is provided when not using --ui
+    if not args.eml_path:
+        logger.error("eml_path argument is required when not using --ui mode")
+        parser.print_help()
+        sys.exit(1)
 
     # Configure logging level
     if args.verbose:

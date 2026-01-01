@@ -40,6 +40,25 @@ uv run python eml/eml_automator.py "path/to/directory" --env-file ".env" --verbo
 uv run python eml/eml_automator.py "path/to/directory" --env-file ".env" --show-filter-stats
 ```
 
+### Web UI (Phase 1 MVP)
+```bash
+# Launch web interface (localhost only, no authentication)
+uv run python eml/eml_automator.py --ui
+
+# Launch on custom port
+uv run python eml/eml_automator.py --ui --port 8081
+
+# Access at: http://127.0.0.1:8080
+```
+
+**Features:**
+- **Dashboard**: Overview with total/processed/suppressed statistics
+- **Upload & Process**: Drag & drop EML files with real-time progress tracking
+- **Suppressed Browser**: Search and filter suppressed emails with statistics
+- **Live Logs**: Real-time processing logs during batch operations
+
+**Technology**: Built with [NiceGUI](https://nicegui.io/) v3.4.1 for reactive, WebSocket-based updates.
+
 ### Run Generic Agent Demo
 ```bash
 uv run python eml/agent_demo.py --api-key "your_key"
