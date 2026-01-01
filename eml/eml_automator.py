@@ -30,10 +30,12 @@ try:
     from crm_client import RealTimeXClient
     from intelligence import IntelligenceLayer, AnalysisResult
     from persistence import PersistenceLayer
+    from filters import EmailFilterOrchestrator, log_suppressed_email
 except ImportError:
     from eml.crm_client import RealTimeXClient
     from eml.intelligence import IntelligenceLayer, AnalysisResult
     from eml.persistence import PersistenceLayer
+    from eml.filters import EmailFilterOrchestrator, log_suppressed_email
 
 # --- Production Logging Configuration ---
 logging.basicConfig(
@@ -50,6 +52,13 @@ class EMLProcessor:
         # Load internal domains and specific emails for filtering (comma-separated lists)
         self.internal_domains = [d.strip().lower() for d in os.environ.get("INTERNAL_DOMAINS", "").split(",") if d.strip()]
         self.internal_emails = [e.strip().lower() for e in os.environ.get("INTERNAL_EMAILS", "").split(",") if e.strip()]
+
+        # Initialize email filter orchestrator
+        # Reuse the LLM client from intelligence layer for classification
+        self.filter_orchestrator = EmailFilterOrchestrator(
+            llm_client=intelligence.client.client if hasattr(intelligence, 'client') else None,
+            llm_model=os.environ.get("CLASSIFICATION_MODEL", "gpt-4o-mini")
+        )
 
     def parse_eml(self, file_path: str):
         try:
@@ -121,12 +130,37 @@ class EMLProcessor:
         return headers, content_to_analyze, attachments
 
     def process(self, file_path: str, force: bool = False):
+        from pathlib import Path
         headers, body, attachments = self.parse_eml(file_path)
         message_id = headers.get("Message-ID")
-        
+
         if not force and self.db.is_already_processed(message_id):
             logger.info(f"Skipping already processed email: {message_id}")
             return
+
+        # === EMAIL FILTERING: Check if email should be processed ===
+        # Re-parse for filtering (need Message object for filters)
+        with open(file_path, 'rb') as f:
+            from email.parser import BytesParser
+            from email import policy as email_policy
+            email_msg = BytesParser(policy=email_policy.default).parse(f)
+
+        # Check if email should be processed
+        decision = self.filter_orchestrator.should_process(email_msg, body)
+
+        if not decision.should_process:
+            # Log suppressed email (using SQLite via persistence layer)
+            log_suppressed_email(
+                Path(file_path),
+                email_msg,
+                decision.reason,
+                decision.category.value if decision.category else None,
+                persistence_layer=self.db
+            )
+            logger.info(f"⊘ Suppressed: {Path(file_path).name} (reason: {decision.reason})")
+            return
+
+        logger.info(f"✓ Processing: {Path(file_path).name} (reason: {decision.reason})")
 
         # Prepare metadata for intelligence layer
         metadata = {
@@ -445,6 +479,7 @@ def main():
     parser.add_argument("--env-file", help="Path to custom .env file")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging (DEBUG level)")
     parser.add_argument("--force", "-f", action="store_true", help="Force reprocessing even if EML was already processed")
+    parser.add_argument("--show-filter-stats", action="store_true", help="Show email filtering statistics after processing")
     
     args = parser.parse_args()
 
@@ -545,6 +580,15 @@ def main():
         logger.info(f"Successfully Processed: {stats['success']}")
         logger.info(f"Failed: {stats['failed']}")
         logger.info("--------------------------")
+
+        # Show filter statistics if requested
+        if args.show_filter_stats:
+            try:
+                from eml.filters.logging import print_suppression_report
+                print_suppression_report(persistence)
+            except ImportError:
+                from filters.logging import print_suppression_report
+                print_suppression_report(persistence)
 
     except Exception as e:
         logger.critical(f"Fatal error during processing: {e}", exc_info=True)

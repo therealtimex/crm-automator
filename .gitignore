@@ -45,6 +45,10 @@ dist/
 .env
 *storybook.log
 .claude
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
 
 # Shadcn Registry
 public/r/
