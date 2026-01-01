@@ -131,328 +131,417 @@ class EMLProcessor:
 
     def process(self, file_path: str, force: bool = False):
         from pathlib import Path
-        headers, body, attachments = self.parse_eml(file_path)
-        message_id = headers.get("Message-ID")
+        import time
+        import traceback
 
-        if not force and self.db.is_already_processed(message_id):
-            logger.info(f"Skipping already processed email: {message_id}")
-            return
+        # Track processing start time
+        start_time = time.time()
+        log_id = None
 
-        # === EMAIL FILTERING: Check if email should be processed ===
-        # Re-parse for filtering (need Message object for filters)
-        with open(file_path, 'rb') as f:
-            from email.parser import BytesParser
-            from email import policy as email_policy
-            email_msg = BytesParser(policy=email_policy.default).parse(f)
-
-        # Check if email should be processed
-        decision = self.filter_orchestrator.should_process(email_msg, body)
-
-        if not decision.should_process:
-            # Log suppressed email (using SQLite via persistence layer)
-            log_suppressed_email(
-                Path(file_path),
-                email_msg,
-                decision.reason,
-                decision.category.value if decision.category else None,
-                persistence_layer=self.db
-            )
-            logger.info(f"⊘ Suppressed: {Path(file_path).name} (reason: {decision.reason})")
-            return
-
-        logger.info(f"✓ Processing: {Path(file_path).name} (reason: {decision.reason})")
-
-        # Prepare metadata for intelligence layer
-        metadata = {
-            "From": headers.get('From', 'Unknown'),
-            "To": headers.get('To', 'Unknown'),
-            "Subject": headers.get('Subject', 'No Subject'),
-        }
-        if headers.get('Cc'): metadata["Cc"] = headers.get('Cc')
-        if attachments:
-            metadata["Attachments"] = ", ".join(attachments)
-
-        # Check for EESA metadata to skip LLM analysis
-        analysis = None
-        eesa_raw_json = headers.get("X-EESA-Raw-JSON")
-        if eesa_raw_json:
-            try:
-                eesa_data = json.loads(base64.b64decode(eesa_raw_json))
-                logger.info(f"Found EESA metadata for {message_id}, skipping LLM analysis.")
-                analysis = self.ai.hydrate_from_eesa(eesa_data, metadata=metadata)
-            except Exception as e:
-                logger.warning(f"Failed to decode EESA metadata: {e}. Falling back to LLM analysis.")
-        
-        if not analysis:
-            analysis = self.ai.analyze_text(body, context_date=headers.get("Date", "Unknown"), metadata=metadata)
-        if not analysis:
-            logger.warning("Intelligence layer failed to return analysis. Proceeding with caution.")
-        
-        # Parse participants
-        participants_raw = []
-        sender_raw = getaddresses([headers.get("From", "")])[0]
-        participants_raw.append(sender_raw)
-        for h in ["To", "Cc", "Bcc"]:
-            participants_raw.extend(getaddresses([headers.get(h, "")]))
-        
-        seen_emails = set()
-        participants = []
-        for name, addr in participants_raw:
-            if addr and addr not in seen_emails:
-                participants.append((name, addr))
-                seen_emails.add(addr)
-        
-        logger.info(f"Parsed Participants: {participants}")
-        
-        # Prepare extraction mapping
-        extracted_info_map = {}
-        if analysis:
-            # Map primary contact
-            if analysis.primary_contact and analysis.primary_contact.email:
-                extracted_info_map[analysis.primary_contact.email.lower()] = analysis.primary_contact
-            
-            # Map others
-            for other in analysis.additional_contacts:
-                if other.email:
-                    extracted_info_map[other.email.lower()] = other
-
-        primary_company_id = None
-        resolved_contacts = []
-        company_cache = {}
-        contact_cache = {}
-        
-        for name, email_addr in participants:
-            email_lower = email_addr.lower()
-            domain = email_addr.split("@")[-1] if "@" in email_addr else ""
-            is_internal = (domain.lower() in self.internal_domains) or (email_lower in self.internal_emails)
-            
-            company_name = domain
-            company_kwargs = {}
-            is_sender = (email_addr == sender_raw[1])
-            
-            # Skip CRM record creation for internal domains
-            if is_internal:
-                logger.info(f"Skipping CRM record creation for internal domain participant: {email_addr}")
-                continue
-
-            # Get extracted info for this specific participant
-            part_info = extracted_info_map.get(email_lower)
-            # Fallback for sender if email mapping failed
-            if not part_info and is_sender and analysis:
-                part_info = analysis.primary_contact
-
-            if part_info:
-                # Company Enrichment
-                if analysis.company_search_query and not (analysis.company_details and analysis.company_details.sector):
-                    # We only search once per email
-                    search_results = self.ai.web_search_company(analysis.company_search_query)
-                    if search_results:
-                        if not analysis.company_details:
-                            analysis.company_details = search_results
-                        else:
-                            for field in search_results.__class__.model_fields:
-                                if not getattr(analysis.company_details, field):
-                                    setattr(analysis.company_details, field, getattr(search_results, field))
-
-                if analysis.company_details and (is_sender or (part_info and part_info.company)):
-                    company_name = analysis.company_details.name or company_name
-                    company_kwargs = analysis.company_details.model_dump(exclude={"name", "website", "email"})
-
-            # Upsert Company
-            company_id = None
-            if domain:
-                if domain in company_cache:
-                    company_id = company_cache[domain]
-                else:
-                    company_id = self.crm.upsert_company(company_name, website=domain, **company_kwargs)
-                    if company_id:
-                        company_cache[domain] = company_id
-            
-            if company_id and not primary_company_id:
-                primary_company_id = company_id
-            
-            # Upsert Contact
-            cid = None
-            contact_kwargs = {}
-            first_name = ""
-            last_name = ""
-            if name:
-                parts = name.split(" ", 1)
-                first_name = parts[0]
-                last_name = parts[1] if len(parts) > 1 else ""
-
-            # Prepare Contact details
-            contact_kwargs = {}
-            if part_info:
-                # Use extracted first/last names if available, fall back to header-parsed
-                if part_info.first_name:
-                    first_name = part_info.first_name
-                if part_info.last_name:
-                    last_name = part_info.last_name
-                
-                # Exclude fields we handle separately or that don't go to contact
-                contact_kwargs = part_info.model_dump(exclude={"email", "first_name", "last_name", "company"})
-
-            contact_id = self.crm.upsert_contact(
-                email_addr,
-                first_name=first_name,
-                last_name=last_name,
-                company_id=company_id or primary_company_id,
-                **contact_kwargs
-            )
-            if contact_id:
-                contact_cache[email_addr] = contact_id
-                resolved_contacts.append((email_addr, contact_id))
-
-
-        # Action Logic
-        if not resolved_contacts:
-            logger.warning("No contacts resolved. Cannot link activities.")
-            return
-
-        # primary contact selection
-        primary_contact_id = None
-        
-        # 1. Try LLM suggested primary contact
-        if analysis and analysis.primary_contact_email:
-            p_email = analysis.primary_contact_email.lower()
-            for email, cid in resolved_contacts:
-                if email.lower() == p_email:
-                    primary_contact_id = cid
-                    break
-        
-        # 2. Fallback: pick first recipient or sender
-        if not primary_contact_id:
-            for email, cid in resolved_contacts:
-                if email != sender_raw[1]:
-                    primary_contact_id = cid
-                    break
-        
-        if not primary_contact_id:
-            primary_contact_id = resolved_contacts[0][1]
-
-        # Extract email timestamp for accurate activity dating
-        email_date = headers.get('Date', None)
-        
-        # Prepare EML file content
-        filename = os.path.basename(file_path)
-        file_content = None
-        
         try:
-            with open(file_path, "rb") as f:
-                file_content = f.read()
-        except Exception as e:
-            logger.error(f"Failed to read EML file: {e}")
-        
-        # Create notes for ALL participants
-        all_contact_ids = [cid for _, cid in resolved_contacts if cid]
-        eml_attachment_url = None
-        
-        # Determine the role of the sender for note context
-        sender_addr = sender_raw[1]
-        sender_email_lower = sender_addr.lower()
-        sender_domain = sender_addr.split("@")[-1].lower() if "@" in sender_addr else ""
-        sender_is_internal = (sender_domain in self.internal_domains) or (sender_email_lower in self.internal_emails)
-        sender_label = "Internal Staff" if sender_is_internal else "External Contact"
+            headers, body, attachments = self.parse_eml(file_path)
+            message_id = headers.get("Message-ID")
+            sender = headers.get("From", "")
+            recipient = headers.get("To", "")
+            subject = headers.get("Subject", "")
+            email_date = headers.get("Date", "")
 
-        for idx, contact_id in enumerate(all_contact_ids):
-            # Find the email for this contact_id to check if it matches primary recipient
-            contact_email = next((email for email, cid in resolved_contacts if cid == contact_id), "Unknown")
-            is_recipient = (contact_id == primary_contact_id)
-            
-            # Personalize note text based on role
-            if sender_is_internal:
-                activity_text = f"📤 **Email from {sender_label}** ({sender_addr})\n"
-                activity_text += f"To: {headers.get('To')}\n"
-            else:
-                activity_text = f"📥 **Email from {sender_label}** ({sender_addr})\n"
-            
-            activity_text += f"Subject: {headers.get('Subject')}\n"
-            activity_text += f"Date: {email_date or 'Unknown'}\n\n"
-            
+            # Start comprehensive logging
+            log_id = self.db.start_processing(
+                file_path=file_path,
+                message_id=message_id,
+                sender=sender,
+                recipient=recipient,
+                subject=subject,
+                email_date=email_date
+            )
+
+            if not force and self.db.is_already_processed(message_id):
+                logger.info(f"Skipping already processed email: {message_id}")
+                # Mark as skipped (already processed)
+                duration_ms = int((time.time() - start_time) * 1000)
+                if log_id:
+                    self.db.complete_processing(log_id, status='skipped', processing_duration_ms=duration_ms)
+                return
+
+            # === EMAIL FILTERING: Check if email should be processed ===
+            # Re-parse for filtering (need Message object for filters)
+            with open(file_path, 'rb') as f:
+                from email.parser import BytesParser
+                from email import policy as email_policy
+                email_msg = BytesParser(policy=email_policy.default).parse(f)
+
+            # Check if email should be processed
+            decision = self.filter_orchestrator.should_process(email_msg, body)
+
+            if not decision.should_process:
+                # Log suppressed email (using SQLite via persistence layer)
+                log_suppressed_email(
+                    Path(file_path),
+                    email_msg,
+                    decision.reason,
+                    decision.category.value if decision.category else None,
+                    persistence_layer=self.db
+                )
+                logger.info(f"⊘ Suppressed: {Path(file_path).name} (reason: {decision.reason})")
+
+                # Complete processing log with suppression details
+                duration_ms = int((time.time() - start_time) * 1000)
+                if log_id:
+                    self.db.complete_processing(
+                        log_id,
+                        status='suppressed',
+                        processing_duration_ms=duration_ms,
+                        suppression_category=decision.category.value if decision.category else None,
+                        suppression_reason=decision.reason
+                    )
+                return
+
+            logger.info(f"✓ Processing: {Path(file_path).name} (reason: {decision.reason})")
+
+            # Track CRM operations for logging
+            crm_contacts_created = 0
+            crm_companies_created = 0
+            crm_activities_created = 0
+
+            # Prepare metadata for intelligence layer
+            metadata = {
+                "From": headers.get('From', 'Unknown'),
+                "To": headers.get('To', 'Unknown'),
+                "Subject": headers.get('Subject', 'No Subject'),
+            }
+            if headers.get('Cc'): metadata["Cc"] = headers.get('Cc')
+            if attachments:
+                metadata["Attachments"] = ", ".join(attachments)
+
+            # Check for EESA metadata to skip LLM analysis
+            analysis = None
+            eesa_raw_json = headers.get("X-EESA-Raw-JSON")
+            if eesa_raw_json:
+                try:
+                    eesa_data = json.loads(base64.b64decode(eesa_raw_json))
+                    logger.info(f"Found EESA metadata for {message_id}, skipping LLM analysis.")
+                    analysis = self.ai.hydrate_from_eesa(eesa_data, metadata=metadata)
+                except Exception as e:
+                    logger.warning(f"Failed to decode EESA metadata: {e}. Falling back to LLM analysis.")
+
+            if not analysis:
+                analysis = self.ai.analyze_text(body, context_date=headers.get("Date", "Unknown"), metadata=metadata)
+            if not analysis:
+                logger.warning("Intelligence layer failed to return analysis. Proceeding with caution.")
+
+            # Parse participants
+            participants_raw = []
+            sender_raw = getaddresses([headers.get("From", "")])[0]
+            participants_raw.append(sender_raw)
+            for h in ["To", "Cc", "Bcc"]:
+                participants_raw.extend(getaddresses([headers.get(h, "")]))
+
+            seen_emails = set()
+            participants = []
+            for name, addr in participants_raw:
+                if addr and addr not in seen_emails:
+                    participants.append((name, addr))
+                    seen_emails.add(addr)
+
+            logger.info(f"Parsed Participants: {participants}")
+
+            # Prepare extraction mapping
+            extracted_info_map = {}
             if analysis:
-                activity_text += f"**Sentiment**: {analysis.sentiment} 🟢  |  **Intent**: {analysis.intent} 🎯\n\n"
-                activity_text += f"{analysis.summary}\n\n"
-            
-            activity_text += "[Original EML file attached below]"
-            
-            # Create note
-            note_kwargs = {
-                "contact_id": contact_id,
-                "status": "New"
-            }
-            
-            if email_date:
-                note_kwargs["date"] = email_date
-            
-            # First note: upload via multipart and extract URL
-            if idx == 0 and file_content:
-                files_payload = [("files", (filename, file_content, "message/rfc822"))]
-                note_kwargs["files"] = files_payload
-                
-                # Call log_activity and capture response to extract URL
-                success, response_data = self.crm.log_activity_with_response(activity_text, **note_kwargs)
-                
-                # Extract attachment URL from response
-                if success and response_data and response_data.get("data"):
-                    attachments = response_data["data"].get("attachments", [])
-                    if len(attachments) > 0:
-                        eml_attachment_url = attachments[0].get("src")
-            
-            # Subsequent notes: reuse URL
-            elif eml_attachment_url:
-                note_kwargs["attachments"] = [{
-                    "url": eml_attachment_url,
-                    "title": filename,
-                    "type": "message/rfc822"
-                }]
-                self.crm.log_activity(activity_text, **note_kwargs)
-            else:
-                # Fallback if no URL available
-                self.crm.log_activity(activity_text, **note_kwargs)
-        
-        # Optional: Create company-level note if primary company exists
-        if primary_company_id and analysis and eml_attachment_url:
-            company_note = f"📧 **Email Activity**\n\nSubject: {headers.get('Subject')}\n"
-            company_note += f"Date: {email_date or 'Unknown'}\n\n"
-            company_note += f"Participants: {len(all_contact_ids)} contacts\n\n"
-            company_note += f"{analysis.summary}\n\n"
-            company_note += "[Original EML file attached below]"
-            
-            company_kwargs = {
-                "activity_type": "company_note",
-                "company_id": primary_company_id,
-                "attachments": [{
-                    "url": eml_attachment_url,
-                    "title": filename,
-                    "type": "message/rfc822"
-                }]
-            }
-            
-            if email_date:
-                company_kwargs["date"] = email_date
-            
-            self.crm.log_activity(company_note, **company_kwargs)
-        
-        # Tasks (only for primary contact)
-        if primary_contact_id and analysis and analysis.suggested_tasks:
-            for task in analysis.suggested_tasks:
-                self.crm.create_task(primary_contact_id, task.description, task.due_date, task.priority, status=task.status)
-        
-        # Deal
-        if analysis and analysis.deal_info and analysis.intent in ["Sales", "Demo"] and primary_company_id:
-            deal_kwargs = analysis.deal_info.model_dump(exclude={"name", "amount", "stage"})
-            self.crm.create_deal(
-                primary_company_id, 
-                [cid for _, cid in resolved_contacts], 
-                analysis.deal_info.name, 
-                    analysis.deal_info.amount or 0, 
+                # Map primary contact
+                if analysis.primary_contact and analysis.primary_contact.email:
+                    extracted_info_map[analysis.primary_contact.email.lower()] = analysis.primary_contact
+
+                # Map others
+                for other in analysis.additional_contacts:
+                    if other.email:
+                        extracted_info_map[other.email.lower()] = other
+
+            primary_company_id = None
+            resolved_contacts = []
+            company_cache = {}
+            contact_cache = {}
+
+            for name, email_addr in participants:
+                email_lower = email_addr.lower()
+                domain = email_addr.split("@")[-1] if "@" in email_addr else ""
+                is_internal = (domain.lower() in self.internal_domains) or (email_lower in self.internal_emails)
+
+                company_name = domain
+                company_kwargs = {}
+                is_sender = (email_addr == sender_raw[1])
+
+                # Skip CRM record creation for internal domains
+                if is_internal:
+                    logger.info(f"Skipping CRM record creation for internal domain participant: {email_addr}")
+                    continue
+
+                # Get extracted info for this specific participant
+                part_info = extracted_info_map.get(email_lower)
+                # Fallback for sender if email mapping failed
+                if not part_info and is_sender and analysis:
+                    part_info = analysis.primary_contact
+
+                if part_info:
+                    # Company Enrichment
+                    if analysis.company_search_query and not (analysis.company_details and analysis.company_details.sector):
+                        # We only search once per email
+                        search_results = self.ai.web_search_company(analysis.company_search_query)
+                        if search_results:
+                            if not analysis.company_details:
+                                analysis.company_details = search_results
+                            else:
+                                for field in search_results.__class__.model_fields:
+                                    if not getattr(analysis.company_details, field):
+                                        setattr(analysis.company_details, field, getattr(search_results, field))
+
+                    if analysis.company_details and (is_sender or (part_info and part_info.company)):
+                        company_name = analysis.company_details.name or company_name
+                        company_kwargs = analysis.company_details.model_dump(exclude={"name", "website", "email"})
+
+                # Upsert Company
+                company_id = None
+                if domain:
+                    if domain in company_cache:
+                        company_id = company_cache[domain]
+                    else:
+                        company_id = self.crm.upsert_company(company_name, website=domain, **company_kwargs)
+                        if company_id:
+                            company_cache[domain] = company_id
+                            crm_companies_created += 1
+
+                if company_id and not primary_company_id:
+                    primary_company_id = company_id
+
+                # Upsert Contact
+                cid = None
+                contact_kwargs = {}
+                first_name = ""
+                last_name = ""
+                if name:
+                    parts = name.split(" ", 1)
+                    first_name = parts[0]
+                    last_name = parts[1] if len(parts) > 1 else ""
+
+                # Prepare Contact details
+                contact_kwargs = {}
+                if part_info:
+                    # Use extracted first/last names if available, fall back to header-parsed
+                    if part_info.first_name:
+                        first_name = part_info.first_name
+                    if part_info.last_name:
+                        last_name = part_info.last_name
+
+                    # Exclude fields we handle separately or that don't go to contact
+                    contact_kwargs = part_info.model_dump(exclude={"email", "first_name", "last_name", "company"})
+
+                contact_id = self.crm.upsert_contact(
+                    email_addr,
+                    first_name=first_name,
+                    last_name=last_name,
+                    company_id=company_id or primary_company_id,
+                    **contact_kwargs
+                )
+                if contact_id:
+                    contact_cache[email_addr] = contact_id
+                    resolved_contacts.append((email_addr, contact_id))
+                    crm_contacts_created += 1
+
+
+            # Action Logic
+            if not resolved_contacts:
+                logger.warning("No contacts resolved. Cannot link activities.")
+                # Complete processing with success but note the warning
+                duration_ms = int((time.time() - start_time) * 1000)
+                if log_id:
+                    self.db.complete_processing(
+                        log_id,
+                        status='success',
+                        processing_duration_ms=duration_ms,
+                        crm_contacts_created=crm_contacts_created,
+                        crm_companies_created=crm_companies_created,
+                        crm_activities_created=crm_activities_created
+                    )
+                return
+
+            # primary contact selection
+            primary_contact_id = None
+
+            # 1. Try LLM suggested primary contact
+            if analysis and analysis.primary_contact_email:
+                p_email = analysis.primary_contact_email.lower()
+                for email, cid in resolved_contacts:
+                    if email.lower() == p_email:
+                        primary_contact_id = cid
+                        break
+
+            # 2. Fallback: pick first recipient or sender
+            if not primary_contact_id:
+                for email, cid in resolved_contacts:
+                    if email != sender_raw[1]:
+                        primary_contact_id = cid
+                        break
+
+            if not primary_contact_id:
+                primary_contact_id = resolved_contacts[0][1]
+
+            # Extract email timestamp for accurate activity dating
+            email_date = headers.get('Date', None)
+
+            # Prepare EML file content
+            filename = os.path.basename(file_path)
+            file_content = None
+
+            try:
+                with open(file_path, "rb") as f:
+                    file_content = f.read()
+            except Exception as e:
+                logger.error(f"Failed to read EML file: {e}")
+
+            # Create notes for ALL participants
+            all_contact_ids = [cid for _, cid in resolved_contacts if cid]
+            eml_attachment_url = None
+
+            # Determine the role of the sender for note context
+            sender_addr = sender_raw[1]
+            sender_email_lower = sender_addr.lower()
+            sender_domain = sender_addr.split("@")[-1].lower() if "@" in sender_addr else ""
+            sender_is_internal = (sender_domain in self.internal_domains) or (sender_email_lower in self.internal_emails)
+            sender_label = "Internal Staff" if sender_is_internal else "External Contact"
+
+            for idx, contact_id in enumerate(all_contact_ids):
+                # Find the email for this contact_id to check if it matches primary recipient
+                contact_email = next((email for email, cid in resolved_contacts if cid == contact_id), "Unknown")
+                is_recipient = (contact_id == primary_contact_id)
+
+                # Personalize note text based on role
+                if sender_is_internal:
+                    activity_text = f"📤 **Email from {sender_label}** ({sender_addr})\n"
+                    activity_text += f"To: {headers.get('To')}\n"
+                else:
+                    activity_text = f"📥 **Email from {sender_label}** ({sender_addr})\n"
+
+                activity_text += f"Subject: {headers.get('Subject')}\n"
+                activity_text += f"Date: {email_date or 'Unknown'}\n\n"
+
+                if analysis:
+                    activity_text += f"**Sentiment**: {analysis.sentiment} 🟢  |  **Intent**: {analysis.intent} 🎯\n\n"
+                    activity_text += f"{analysis.summary}\n\n"
+
+                activity_text += "[Original EML file attached below]"
+
+                # Create note
+                note_kwargs = {
+                    "contact_id": contact_id,
+                    "status": "New"
+                }
+
+                if email_date:
+                    note_kwargs["date"] = email_date
+
+                # First note: upload via multipart and extract URL
+                if idx == 0 and file_content:
+                    files_payload = [("files", (filename, file_content, "message/rfc822"))]
+                    note_kwargs["files"] = files_payload
+
+                    # Call log_activity and capture response to extract URL
+                    success, response_data = self.crm.log_activity_with_response(activity_text, **note_kwargs)
+
+                    # Extract attachment URL from response
+                    if success and response_data and response_data.get("data"):
+                        attachments = response_data["data"].get("attachments", [])
+                        if len(attachments) > 0:
+                            eml_attachment_url = attachments[0].get("src")
+                            crm_activities_created += 1
+
+                # Subsequent notes: reuse URL
+                elif eml_attachment_url:
+                    note_kwargs["attachments"] = [{
+                        "url": eml_attachment_url,
+                        "title": filename,
+                        "type": "message/rfc822"
+                    }]
+                    self.crm.log_activity(activity_text, **note_kwargs)
+                    crm_activities_created += 1
+                else:
+                    # Fallback if no URL available
+                    self.crm.log_activity(activity_text, **note_kwargs)
+                    crm_activities_created += 1
+
+            # Optional: Create company-level note if primary company exists
+            if primary_company_id and analysis and eml_attachment_url:
+                company_note = f"📧 **Email Activity**\n\nSubject: {headers.get('Subject')}\n"
+                company_note += f"Date: {email_date or 'Unknown'}\n\n"
+                company_note += f"Participants: {len(all_contact_ids)} contacts\n\n"
+                company_note += f"{analysis.summary}\n\n"
+                company_note += "[Original EML file attached below]"
+
+                company_kwargs = {
+                    "activity_type": "company_note",
+                    "company_id": primary_company_id,
+                    "attachments": [{
+                        "url": eml_attachment_url,
+                        "title": filename,
+                        "type": "message/rfc822"
+                    }]
+                }
+
+                if email_date:
+                    company_kwargs["date"] = email_date
+
+                self.crm.log_activity(company_note, **company_kwargs)
+                crm_activities_created += 1
+
+            # Tasks (only for primary contact)
+            if primary_contact_id and analysis and analysis.suggested_tasks:
+                for task in analysis.suggested_tasks:
+                    self.crm.create_task(primary_contact_id, task.description, task.due_date, task.priority, status=task.status)
+
+            # Deal
+            if analysis and analysis.deal_info and analysis.intent in ["Sales", "Demo"] and primary_company_id:
+                deal_kwargs = analysis.deal_info.model_dump(exclude={"name", "amount", "stage"})
+                self.crm.create_deal(
+                    primary_company_id,
+                    [cid for _, cid in resolved_contacts],
+                    analysis.deal_info.name,
+                    analysis.deal_info.amount or 0,
                     analysis.deal_info.stage,
                     **deal_kwargs
                 )
-            
-            self.db.mark_as_processed(message_id)
+
+            # Mark processing as completed successfully
+            duration_ms = int((time.time() - start_time) * 1000)
+            if log_id:
+                self.db.complete_processing(
+                    log_id,
+                    status='success',
+                    processing_duration_ms=duration_ms,
+                    crm_contacts_created=crm_contacts_created,
+                    crm_companies_created=crm_companies_created,
+                    crm_activities_created=crm_activities_created
+                )
+
             logger.info(f"Successfully finished processing for EML.")
+
+        except Exception as e:
+            # Log the error with full traceback
+            logger.error(f"Failed to process {file_path}: {e}", exc_info=True)
+
+            # Complete processing with error status
+            duration_ms = int((time.time() - start_time) * 1000)
+            if log_id:
+                self.db.complete_processing(
+                    log_id,
+                    status='failed',
+                    processing_duration_ms=duration_ms,
+                    error_message=str(e),
+                    error_type=type(e).__name__,
+                    error_traceback=traceback.format_exc()
+                )
+
+            # Re-raise the exception so it can be caught by the caller
+            raise
 
 
 

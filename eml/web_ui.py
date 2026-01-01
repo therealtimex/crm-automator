@@ -63,43 +63,25 @@ class AnalyticsEngine:
         return get_database_stats()
 
     def get_suppression_breakdown(self) -> Dict[str, int]:
-        """Get suppression counts by category"""
+        """Get suppression counts by category using new processing_log table"""
         try:
-            import sqlite3
-            conn = sqlite3.connect(self.db.db_path)
-            cursor = conn.cursor()
-
-            cursor.execute("""
-                SELECT category, COUNT(*) as count
-                FROM suppressed_emails
-                WHERE category IS NOT NULL
-                GROUP BY category
-                ORDER BY count DESC
-            """)
-
-            results = {}
-            for row in cursor.fetchall():
-                results[row[0]] = row[1]
-
-            conn.close()
-            return results
-
+            return self.db.get_suppression_breakdown()
         except Exception as e:
             print(f"Error getting suppression breakdown: {e}")
             return {}
 
     def get_reason_breakdown(self) -> Dict[str, int]:
-        """Get suppression counts by reason"""
+        """Get suppression counts by reason using new processing_log table"""
         try:
             import sqlite3
             conn = sqlite3.connect(self.db.db_path)
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT reason, COUNT(*) as count
-                FROM suppressed_emails
-                WHERE reason IS NOT NULL
-                GROUP BY reason
+                SELECT suppression_reason, COUNT(*) as count
+                FROM processing_log
+                WHERE status = 'suppressed' AND suppression_reason IS NOT NULL
+                GROUP BY suppression_reason
                 ORDER BY count DESC
                 LIMIT 10
             """)
@@ -116,7 +98,7 @@ class AnalyticsEngine:
             return {}
 
     def get_top_suppressed_domains(self, limit: int = 10) -> Dict[str, int]:
-        """Get top suppressed email domains/senders"""
+        """Get top suppressed email domains/senders using new processing_log table"""
         try:
             import sqlite3
             conn = sqlite3.connect(self.db.db_path)
@@ -124,8 +106,8 @@ class AnalyticsEngine:
 
             cursor.execute("""
                 SELECT sender, COUNT(*) as count
-                FROM suppressed_emails
-                WHERE sender IS NOT NULL
+                FROM processing_log
+                WHERE status = 'suppressed' AND sender IS NOT NULL
                 GROUP BY sender
                 ORDER BY count DESC
                 LIMIT ?
@@ -143,39 +125,20 @@ class AnalyticsEngine:
             return {}
 
     def get_timeline_data(self, days: int = 30) -> Dict[str, List]:
-        """Get daily processing counts for timeline chart"""
+        """Get daily processing counts for timeline chart using new processing_log table"""
         try:
-            import sqlite3
             from datetime import datetime, timedelta
 
-            conn = sqlite3.connect(self.db.db_path)
-            cursor = conn.cursor()
+            # Get timeline data from persistence layer
+            timeline = self.db.get_timeline_data(days=days)
 
-            # Get suppressed emails timeline
-            cursor.execute("""
-                SELECT DATE(timestamp) as date, COUNT(*) as count
-                FROM suppressed_emails
-                WHERE timestamp >= date('now', '-' || ? || ' days')
-                GROUP BY DATE(timestamp)
-                ORDER BY date
-            """, (days,))
+            # Extract processed and suppressed data
+            processed_data = {}
+            suppressed_data = {}
 
-            suppressed_data = {row[0]: row[1] for row in cursor.fetchall()}
-
-            # Get processed emails timeline (if table exists and has timestamp)
-            try:
-                cursor.execute("""
-                    SELECT DATE(created_at) as date, COUNT(*) as count
-                    FROM processed_emails
-                    WHERE created_at >= date('now', '-' || ? || ' days')
-                    GROUP BY DATE(created_at)
-                    ORDER BY date
-                """, (days,))
-                processed_data = {row[0]: row[1] for row in cursor.fetchall()}
-            except:
-                processed_data = {}
-
-            conn.close()
+            for date, counts in timeline.items():
+                processed_data[date] = counts.get('success', 0)
+                suppressed_data[date] = counts.get('suppressed', 0)
 
             # Create complete date range
             end_date = datetime.now().date()
@@ -552,32 +515,17 @@ class ConfigManager:
 
 
 def get_database_stats() -> Dict[str, int]:
-    """Get statistics from SQLite database"""
+    """Get statistics from SQLite database using new processing_log table"""
     try:
-        import sqlite3
         db = PersistenceLayer()
+        stats = db.get_processing_stats()
 
-        # Create connection
-        conn = sqlite3.connect(db.db_path)
-        cursor = conn.cursor()
-
-        # Count processed emails
-        cursor.execute("SELECT COUNT(*) FROM processed_emails")
-        processed_count = cursor.fetchone()[0]
-
-        # Count suppressed emails
-        cursor.execute("SELECT COUNT(*) FROM suppressed_emails")
-        suppressed_count = cursor.fetchone()[0]
-
-        conn.close()
-
-        total_count = processed_count + suppressed_count
-
+        # Map to legacy format for dashboard compatibility
         return {
-            "total": total_count,
-            "processed": processed_count,
-            "suppressed": suppressed_count,
-            "failed": 0  # TODO: Track failures
+            "total": stats["total"],
+            "processed": stats["success"],
+            "suppressed": stats["suppressed"],
+            "failed": stats["failed"]
         }
     except Exception as e:
         print(f"Error getting database stats: {e}")
@@ -585,42 +533,17 @@ def get_database_stats() -> Dict[str, int]:
 
 
 def get_suppressed_emails(limit: int = 100, category: str = None, search: str = None) -> List[Dict]:
-    """Get suppressed emails from database"""
+    """Get suppressed emails from database using new processing_log table"""
     try:
-        import sqlite3
         db = PersistenceLayer()
 
-        # Create connection
-        conn = sqlite3.connect(db.db_path)
-        cursor = conn.cursor()
-
-        query = "SELECT * FROM suppressed_emails"
-        params = []
-        conditions = []
-
-        if category and category != "All":
-            conditions.append("category = ?")
-            params.append(category)
-
-        if search:
-            conditions.append("(sender LIKE ? OR subject LIKE ?)")
-            search_term = f"%{search}%"
-            params.extend([search_term, search_term])
-
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-
-        query += " ORDER BY timestamp DESC LIMIT ?"
-        params.append(limit)
-
-        cursor.execute(query, params)
-
-        columns = [desc[0] for desc in cursor.description]
-        results = []
-        for row in cursor.fetchall():
-            results.append(dict(zip(columns, row)))
-
-        conn.close()
+        # Use persistence layer's method which queries processing_log
+        category_filter = category if category and category != "All" else None
+        results = db.get_suppressed_emails(
+            limit=limit,
+            category=category_filter,
+            sender=search if search else None
+        )
 
         return results
     except Exception as e:
