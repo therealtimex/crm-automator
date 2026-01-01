@@ -51,57 +51,149 @@ class ProcessingState:
 # Global state
 state = ProcessingState()
 
+def apply_nexus_theme():
+    """Injects Nexus Glass styling overrides."""
+    ui.add_head_html('''
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+        <style>
+            body { font-family: 'Inter', sans-serif; }
+            
+            /* --- Deep Space Gradient Background --- */
+            .body--dark .nicegui-content { 
+                background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%); 
+                min-height: 100vh; 
+            }
+            
+            /* --- Top Bar & Header --- */
+            .q-header { 
+                height: 56px !important;
+                background-color: transparent !important; 
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+            }
+            .body--light .q-header {
+                background-color: #ffffff !important;
+                border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
+            }
+            .body--dark .q-header {
+                background-color: #0f0f23 !important;
+            }
+
+            /* --- Glass Cards Override (Dark) --- */
+            .body--dark .q-card { 
+                background: rgba(255, 255, 255, 0.05) !important; 
+                backdrop-filter: blur(10px); 
+                border: 1px solid rgba(255, 255, 255, 0.1); 
+            }
+            
+            /* --- Clean Cards Override (Light) --- */
+            .body--light .q-card {
+                background: #ffffff !important;
+                border: 1px solid rgba(0, 0, 0, 0.1);
+                box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            }
+            
+            /* --- Quasar Component Cleanups --- */
+            .q-table, .q-table__card { background: transparent !important; }
+            .q-tab__indicator { height: 3px !important; border-radius: 3px 3px 0 0; }
+            .q-tabs { height: 100%; }
+
+            /* --- Upload Component Fix --- */
+            .q-uploader__list:not(:has(.q-uploader__file)) {
+                display: none !important;
+            }
+        </style>
+    ''')
+    
+    # Force Dark Mode by default, but allow toggle
+    dark = ui.dark_mode()
+    dark.enable()
+    return dark
+
+def status_badge(text: str, state: str = 'neutral'):
+    colors = {
+        'success': 'text-green-400 bg-green-500/10 border-green-500/20',
+        'positive': 'text-green-400 bg-green-500/10 border-green-500/20',
+        'neutral': 'text-blue-400 bg-blue-500/10 border-blue-500/20',
+        'primary': 'text-blue-400 bg-blue-500/10 border-blue-500/20',
+        'warning': 'text-orange-400 bg-orange-500/10 border-orange-500/20',
+        'error':   'text-red-400 bg-red-500/10 border-red-500/20',
+        'negative': 'text-red-400 bg-red-500/10 border-red-500/20',
+        'skipped': 'text-gray-400 bg-gray-500/10 border-gray-500/20',
+        'failed': 'text-red-400 bg-red-500/10 border-red-500/20',
+        'suppressed': 'text-orange-400 bg-orange-500/10 border-orange-500/20',
+    }
+    # Map common status codes to our keys
+    state_map = {
+        'processed': 'success',
+        'suppressed': 'warning', 
+        'failed': 'error'
+    }
+    
+    # Normalize state key
+    key = state_map.get(state, state)
+    style = colors.get(key, colors['neutral'])
+    
+    ui.label(text.upper()).classes(f'px-2 py-0.5 text-[10px] rounded-full border {style}')
+
+
 
 # ========== Shared UI Components ==========
 
-def create_header_with_tabs(active_tab_name: str = 'dashboard'):
-    """Create header with top tabs navigation (email-archiver style)"""
-    with ui.header().classes('items-center justify-between px-6 py-3'):
-        # Left: App branding
-        with ui.row().classes('items-center gap-3'):
-            ui.icon('business_center', size='md').classes('text-white')
-            ui.label('CRM Automator').classes('text-h6 font-bold text-white')
+def create_header_with_tabs(dark_mode_handler, active_tab_name: str = 'dashboard'):
+    """Create header with top tabs navigation (Nexus Glass style)"""
+    # Header container (p-0 to allow full control by inner row)
+    with ui.header().classes('p-0'):
+        # Inner row with fixed height and padding (matches reference)
+        with ui.row().classes('w-full items-center justify-between px-6 h-14'):
+            
+            # Left: App branding
+            with ui.row().classes('items-center gap-3'):
+                ui.label('N').classes('w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-bold text-white')
+                ui.label('CRM AUTOMATOR').classes('text-sm font-bold tracking-wide dark:text-white text-gray-800')
 
-        # Center: Tabs
-        with ui.tabs().classes('bg-transparent self-stretch') \
-            .props('indicator-color="white" active-color="white" dense no-caps') as tabs:
-            dashboard_tab = ui.tab('Dashboard', icon='dashboard')
-            upload_tab = ui.tab('Upload & Process', icon='upload')
-            analytics_tab = ui.tab('Analytics', icon='bar_chart')
-            suppressed_tab = ui.tab('Suppressed', icon='filter_list')
-            config_tab = ui.tab('Configuration', icon='settings')
+            # Center: Tabs (Self-stretch to fill height)
+            with ui.tabs().classes('bg-transparent self-stretch text-gray-400') \
+                .props('indicator-color="blue-400" active-color="blue-400" dense no-caps') as tabs:
+                dashboard_tab = ui.tab('Dashboard', icon='dashboard')
+                upload_tab = ui.tab('Upload & Process', icon='upload')
+                analytics_tab = ui.tab('Analytics', icon='bar_chart')
+                suppressed_tab = ui.tab('Suppressed', icon='filter_list')
+                config_tab = ui.tab('Configuration', icon='settings')
 
-        # Right: Theme switcher
-        with ui.row().classes('items-center gap-2'):
-            ui.select(
-                ['Light', 'Dark', 'System'],
-                value='Light',
-                label='Theme'
-            ).classes('text-white').props('dark dense outlined').style('min-width: 120px')
+            # Right: System Status & Theme Toggle
+            with ui.row().classes('items-center gap-6'):
+                 # Theme Switcher (Icon with Menu)
+                 with ui.button(icon='brightness_6').props('flat round dense text-color=grey-5'):
+                     ui.tooltip('Change Theme')
+                     with ui.menu().classes('bg-gray-800 text-white border border-gray-700'):
+                         ui.menu_item('Light', on_click=lambda: dark_mode_handler.disable()).classes('hover:bg-gray-700')
+                         ui.menu_item('Dark', on_click=lambda: dark_mode_handler.enable()).classes('hover:bg-gray-700')
+                         ui.menu_item('System', on_click=lambda: dark_mode_handler.auto()).classes('hover:bg-gray-700')
+
+                 # System Status
+                 with ui.row().classes('items-center gap-2'):
+                     ui.element('div').classes('w-2 h-2 rounded-full bg-green-500 animate-pulse')
+                     ui.label('SYSTEM ONLINE').classes('text-[10px] font-bold text-green-500 tracking-wider')
 
     return tabs, dashboard_tab, upload_tab, analytics_tab, suppressed_tab, config_tab
 
 
-def create_stat_card(title: str, value: int, icon: str, color: str, trend: str = None, trend_value: str = None):
-    """Create enhanced stat card with icon and optional trend"""
-    with ui.card().classes('flex-1 p-4 hover:shadow-lg transition-shadow'):
-        with ui.row().classes('w-full items-start justify-between'):
-            # Left side - title and value
+def create_stat_card(title: str, value: int, icon: str = None, color: str = None, trend: str = None, trend_value: str = None):
+    """Create Nexus Glass stat card"""
+    with ui.card().classes('flex-1 p-4'):
+        with ui.row().classes('w-full justify-between items-start'):
             with ui.column().classes('gap-1'):
-                ui.label(title).classes(f'text-caption text-{color}')
-                ui.label(str(value)).classes(f'text-h3 text-{color} font-bold')
-
-                # Trend indicator
+                ui.label(title).classes('text-xs text-gray-400 uppercase tracking-wider mb-1')
+                ui.label(str(value)).classes('text-3xl font-bold text-white')
+                
                 if trend and trend_value:
-                    trend_icon = 'trending_up' if trend == 'up' else 'trending_down'
-                    trend_color = 'positive' if trend == 'up' else 'negative'
+                    trend_color = 'text-green-400' if trend == 'up' else 'text-red-400'
                     with ui.row().classes('items-center gap-1 mt-1'):
-                        ui.icon(trend_icon, size='sm').classes(f'text-{trend_color}')
-                        ui.label(trend_value).classes(f'text-caption text-{trend_color}')
-
-            # Right side - icon
-            with ui.avatar(f'{icon}', color=color).classes('text-white'):
-                pass
+                        ui.icon('trending_up' if trend == 'up' else 'trending_down', size='xs').classes(trend_color)
+                        ui.label(trend_value).classes(f'text-xs {trend_color}')
+            
+            if icon:
+                ui.icon(icon, size='md').classes('text-white/20')
 
 
 def create_recent_activity_item(item: Dict[str, Any]):
@@ -136,7 +228,7 @@ def create_recent_activity_item(item: Dict[str, Any]):
             sender = item.get('sender', 'Unknown')
             if len(sender) > 40:
                 sender = sender[:40] + '...'
-            ui.label(sender).classes('text-caption text-grey-7')
+            ui.label(sender).classes('text-caption text-gray-400')
 
         # Timestamp
         timestamp = item.get('processing_started_at', '')
@@ -144,7 +236,7 @@ def create_recent_activity_item(item: Dict[str, Any]):
             try:
                 dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                 time_str = dt.strftime('%H:%M')
-                ui.label(time_str).classes('text-caption text-grey-6')
+                ui.label(time_str).classes('text-caption text-gray-500')
             except:
                 pass
 
@@ -153,8 +245,8 @@ def create_empty_state(icon: str, title: str, description: str, action_label: st
     """Create empty state UI"""
     with ui.column().classes('w-full items-center justify-center p-12 gap-4'):
         ui.icon(icon, size='xl').classes('text-grey-4')
-        ui.label(title).classes('text-h6 text-grey-6')
-        ui.label(description).classes('text-caption text-grey-5 text-center')
+        ui.label(title).classes('text-h6 text-gray-500')
+        ui.label(description).classes('text-caption text-gray-600 text-center')
 
         if action_label and action_route:
             ui.button(action_label, on_click=lambda: ui.navigate.to(action_route), icon='add').props('color=primary')
@@ -815,11 +907,13 @@ async def process_files_async(files: List[Path], force: bool = False, verbose: b
 @ui.page('/')
 def main_page():
     """Main page with tabbed interface (email-archiver style)"""
+    app_dark_mode = apply_nexus_theme()
+    
     # Create header with tabs
-    tabs, dashboard_tab, upload_tab, analytics_tab, suppressed_tab, config_tab = create_header_with_tabs()
+    tabs, dashboard_tab, upload_tab, analytics_tab, suppressed_tab, config_tab = create_header_with_tabs(app_dark_mode)
 
     # Main content with tab panels
-    with ui.tab_panels(tabs, value=dashboard_tab).classes('w-full flex-1'):
+    with ui.tab_panels(tabs, value=dashboard_tab).classes('w-full flex-1 bg-transparent'):
         # ========== DASHBOARD TAB ==========
         with ui.tab_panel(dashboard_tab):
             with ui.column().classes('w-full p-6 gap-6'):
@@ -828,16 +922,18 @@ def main_page():
 
                 # Enhanced stat cards with icons
                 with ui.row().classes('w-full gap-4 mb-6'):
-                    create_stat_card('Total Emails', stats['total'], 'mail', 'primary')
-                    create_stat_card('Successfully Processed', stats['processed'], 'check_circle', 'positive',
+                    create_stat_card('TOTAL EMAILS', stats['total'], 'mail')
+                    create_stat_card('PROCESSED', stats['processed'], 'check_circle', 
                                    trend='up' if stats['processed'] > 0 else None,
                                    trend_value=f"+{stats['processed']}" if stats['processed'] > 0 else None)
-                    create_stat_card('Suppressed', stats['suppressed'], 'block', 'warning')
-                    create_stat_card('Failed', stats['failed'], 'error', 'negative')
+                    create_stat_card('SUPPRESSED', stats['suppressed'], 'block')
+                    create_stat_card('FAILED', stats['failed'], 'error')
 
                 # Recent Activity - Full width
-                with ui.card().classes('w-full'):
-                    ui.label('Recent Activity').classes('text-h6 font-medium mb-3')
+                with ui.card().classes('w-full p-0 gap-0'): # p-0 for table-like feel
+                    with ui.row().classes('p-4 border-b border-white/10 items-center justify-between'):
+                         ui.label('RECENT ACTIVITY').classes('text-sm font-bold tracking-wide text-white')
+                         ui.button('View All', icon='arrow_forward', color='white').props('flat dense size=sm')
 
                     # Get recent activity
                     try:
@@ -845,15 +941,14 @@ def main_page():
                         recent_items = db.get_processing_history(limit=10)
 
                         if recent_items:
-                            # Show table of activities
-                            columns = [
-                                {'name': 'status', 'label': 'Status', 'field': 'status', 'align': 'center', 'style': 'width: 100px'},
-                                {'name': 'subject', 'label': 'Subject', 'field': 'subject', 'align': 'left'},
-                                {'name': 'sender', 'label': 'Sender', 'field': 'sender', 'align': 'left'},
-                                {'name': 'time', 'label': 'Time', 'field': 'time', 'align': 'right', 'style': 'width: 120px'},
-                            ]
+                            # Header
+                            with ui.row().classes('w-full px-4 py-2 border-b border-white/10 text-xs font-bold text-gray-400 uppercase tracking-wider'):
+                                ui.label('Subject').classes('flex-[2]')
+                                ui.label('Sender').classes('flex-[1]')
+                                ui.label('Status').classes('w-24 text-center')
+                                ui.label('Time').classes('w-24 text-right')
 
-                            rows = []
+                            # Rows
                             for item in recent_items:
                                 status = item.get('status') or 'skipped'
                                 subject = item.get('subject') or 'No Subject'
@@ -861,36 +956,27 @@ def main_page():
 
                                 # Format timestamp
                                 timestamp = item.get('processing_started_at') or ''
-                                time_str = 'Unknown'
+                                time_str = '-'
                                 if timestamp:
                                     try:
                                         dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                                        time_str = dt.strftime('%b %d, %H:%M')
+                                        time_str = dt.strftime('%H:%M')
                                     except:
                                         pass
+                                
+                                with ui.row().classes('w-full px-4 py-3 border-b border-white/5 items-center hover:bg-white/5 transition-colors'):
+                                     ui.label(subject[:60] + '...').classes('flex-[2] font-medium text-sm truncate pr-2 text-white')
+                                     ui.label(sender[:30] + '...').classes('flex-[1] text-xs text-gray-400 truncate pr-2')
+                                     with ui.element('div').classes('w-24 flex justify-center'):
+                                         status_badge(status, status)
+                                     ui.label(time_str).classes('w-24 text-right text-xs text-gray-500 font-mono')
 
-                                # Status badge
-                                status_badges = {
-                                    'success': '✅ Success',
-                                    'suppressed': '🚫 Suppressed',
-                                    'failed': '❌ Failed',
-                                    'skipped': '⏭️ Skipped'
-                                }
-
-                                rows.append({
-                                    'status': status_badges.get(status, status),
-                                    'subject': subject[:60] + '...' if len(subject) > 60 else subject,
-                                    'sender': sender[:40] + '...' if len(sender) > 40 else sender,
-                                    'time': time_str
-                                })
-
-                            ui.table(columns=columns, rows=rows, row_key='subject').classes('w-full')
                         else:
                             # Empty state - Start fresh
                             with ui.column().classes('w-full items-center justify-center p-12 gap-3'):
-                                ui.icon('inbox', size='xl').classes('text-grey-4')
-                                ui.label('No Activity Yet').classes('text-h6 text-grey-6')
-                                ui.label('Start fresh! Upload emails to begin processing.').classes('text-caption text-grey-5 text-center')
+                                ui.icon('inbox', size='xl').classes('text-gray-400')
+                                ui.label('No Activity Yet').classes('text-h6 text-gray-500')
+                                ui.label('Start fresh! Upload emails to begin processing.').classes('text-caption text-gray-600 text-center')
                     except Exception as e:
                         ui.label(f'Error loading activity: {e}').classes('text-negative text-caption')
 
@@ -903,16 +989,14 @@ def main_page():
 
                     async def handle_upload(e):
                         """Handle file upload"""
-                        state.uploaded_files = []
-
-                        # Save uploaded files
-                        for file in e.content:
-                            if file.name.endswith('.eml'):
-                                # Save to temp directory
-                                temp_path = Path('/tmp') / file.name
-                                with open(temp_path, 'wb') as f:
-                                    f.write(file.read())
-                                state.uploaded_files.append(temp_path)
+                        # e.content is a single file-like object, not a list
+                        file = e.content
+                        if e.name.endswith('.eml'):
+                            # Save to temp directory
+                            temp_path = Path('/tmp') / e.name
+                            with open(temp_path, 'wb') as f:
+                                f.write(file.read())
+                            state.uploaded_files.append(temp_path)
 
                         # Update file list display
                         uploaded_files_list.clear()
@@ -923,22 +1007,20 @@ def main_page():
                                     ui.icon('description', size='sm').classes('text-primary')
                                     ui.label(file.name).classes('text-sm')
                             if len(state.uploaded_files) > 10:
-                                ui.label(f'...and {len(state.uploaded_files) - 10} more').classes('text-caption text-grey-7 mt-2')
+                                ui.label(f'...and {len(state.uploaded_files) - 10} more').classes('text-caption text-gray-400 mt-2')
 
                     # Drag & drop upload area
-                    with ui.column().classes('w-full items-center justify-center p-12 cursor-pointer').style(
-                        'border: 2px dashed #ccc; border-radius: 8px; background: #fafafa; transition: all 0.3s;'
-                    ):
+                    with ui.column().classes('w-full items-center justify-center p-12 cursor-pointer border-2 border-dashed border-white/20 rounded-xl bg-white/5 hover:bg-white/10 transition-colors'):
                         ui.icon('cloud_upload', size='xl').classes('text-primary mb-3')
-                        ui.label('Drag & drop EML files here').classes('text-h6 font-medium mb-1')
-                        ui.label('or click to browse').classes('text-caption text-grey-6 mb-4')
+                        ui.label('Drag & drop EML files here').classes('text-h6 font-medium mb-1 text-white')
+                        ui.label('or click to browse').classes('text-caption text-gray-400 mb-4')
 
-                        ui.upload(
+                        upload_element = ui.upload(
                             on_upload=handle_upload,
                             multiple=True,
                             auto_upload=True,
                             label='Choose Files'
-                        ).props('accept=.eml color=primary').classes('w-full max-w-xs')
+                        ).props('accept=.eml color=primary flat').classes('w-full max-w-xs')
 
                 # Processing options
                 with ui.card().classes('w-full mb-4'):
@@ -965,13 +1047,20 @@ def main_page():
                             verbose=verbose_checkbox.value
                         )
 
-                    ui.button('Start Processing',
+                    with ui.button('Start Processing',
                              on_click=start_processing,
-                             icon='play_arrow').props('color=primary').bind_enabled_from(state, 'is_processing', lambda x: not x)
+                             icon='play_arrow').props('color=primary unelevated').bind_enabled_from(state, 'is_processing', lambda x: not x):
+                         ui.tooltip('Begin processing all uploaded EML files')
 
-                    ui.button('Clear Files',
-                             on_click=lambda: (state.uploaded_files.clear(), uploaded_files_list.clear()),
-                             icon='clear').props('color=grey-7 outline').bind_enabled_from(state, 'is_processing', lambda x: not x)
+                    def clear_all_files():
+                        state.uploaded_files.clear()
+                        uploaded_files_list.clear() # Clear the visual list
+                        upload_element.reset()      # Reset the upload component
+
+                    with ui.button('Clear Files',
+                             on_click=clear_all_files,
+                             icon='clear').props('color=grey-7 outline').bind_enabled_from(state, 'is_processing', lambda x: not x):
+                         ui.tooltip('Remove all files from the upload list')
 
                 # Progress indicator
                 progress_card = ui.card().classes('w-full mb-4')
@@ -988,8 +1077,8 @@ def main_page():
 
                 # Live logs
                 with ui.card().classes('w-full'):
-                    ui.label('Live Logs').classes('text-h6 mb-2')
-                    log_container = ui.column().classes('w-full bg-grey-1 p-4 rounded').style('max-height: 400px; overflow-y: auto')
+                    ui.label('LIVE LOGS').classes('text-xs font-bold text-gray-400 uppercase tracking-wider mb-2')
+                    log_container = ui.column().classes('w-full bg-gray-900 p-4 rounded font-mono text-xs text-gray-300').style('max-height: 400px; overflow-y: auto')
 
                     # Auto-update logs
                     def update_logs():
@@ -1017,7 +1106,8 @@ def main_page():
                         value='Last 30 Days',
                         label='Date Range'
                     )
-                    ui.button('Refresh Data', on_click=lambda: ui.navigate.reload(), icon='refresh').props('outline')
+                    with ui.button('Refresh Data', on_click=lambda: ui.navigate.reload(), icon='refresh').props('outline'):
+                        ui.tooltip('Reload analytics data')
 
                 # Overview cards with charts
                 with ui.row().classes('w-full gap-4 mb-4'):
@@ -1039,7 +1129,7 @@ def main_page():
                         category_chart = analytics.create_category_bar_chart(category_data)
                         ui.plotly(category_chart).classes('w-full')
                     else:
-                        ui.label('No suppression data available yet').classes('text-grey-7 p-4')
+                        ui.label('No suppression data available yet').classes('text-gray-400 p-4')
 
                 # Timeline chart
                 with ui.card().classes('w-full mb-4'):
@@ -1052,7 +1142,7 @@ def main_page():
                         timeline_chart = analytics.create_timeline_chart(timeline_data)
                         ui.plotly(timeline_chart).classes('w-full')
                     else:
-                        ui.label('No timeline data available yet').classes('text-grey-7 p-4')
+                        ui.label('No timeline data available yet').classes('text-gray-400 p-4')
 
                 # Two column layout for remaining charts
                 with ui.row().classes('w-full gap-4'):
@@ -1064,7 +1154,7 @@ def main_page():
                             ui.plotly(domains_chart).classes('w-full')
                         else:
                             ui.label('Top Suppressed Domains').classes('text-h6 mb-2')
-                            ui.label('No suppression data available yet').classes('text-grey-7 p-4')
+                            ui.label('No suppression data available yet').classes('text-gray-400 p-4')
 
                     # Suppression by reason
                     with ui.card().classes('flex-1'):
@@ -1097,7 +1187,7 @@ def main_page():
                             ui.plotly(reason_fig).classes('w-full')
                         else:
                             ui.label('Suppression by Reason').classes('text-h6 mb-2')
-                            ui.label('No reason data available yet').classes('text-grey-7 p-4')
+                            ui.label('No reason data available yet').classes('text-gray-400 p-4')
 
         # ========== CONFIG TAB ==========
         with ui.tab_panel(config_tab):
@@ -1149,8 +1239,9 @@ def main_page():
                             status_message.classes('text-negative')
                             ui.notify('Save failed', type='negative')
 
-                    ui.button('Save Configuration', on_click=save_configuration, icon='save').props('color=primary')
-                    ui.button('Reload from File', on_click=lambda: ui.navigate.reload(), icon='refresh').props('outline')
+                    ui.button('Save Configuration', on_click=save_configuration, icon='save').props('color=primary unelevated')
+                    with ui.button('Reload from File', on_click=lambda: ui.navigate.reload(), icon='refresh').props('outline'):
+                        ui.tooltip('Discard changes and reload from .env file')
 
                 # CRM API Settings
                 with ui.card().classes('w-full mb-4'):
@@ -1160,7 +1251,9 @@ def main_page():
                         'CRM API Base URL',
                         value=current_config.get('CRM_API_BASE_URL', ''),
                         placeholder='https://your-project.supabase.co/functions/v1'
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['CRM_API_BASE_URL']:
+                        ui.tooltip('The base endpoint for RealTimeX CRM functions')
 
                     form_data['CRM_API_KEY'] = ui.input(
                         'CRM API Key',
@@ -1168,7 +1261,9 @@ def main_page():
                         placeholder='ak_live_...',
                         password=True,
                         password_toggle_button=True
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['CRM_API_KEY']:
+                        ui.tooltip('Your secret API key from RealTimeX Dashboard')
 
                     crm_status_label = ui.label().classes('mt-2')
 
@@ -1202,7 +1297,9 @@ def main_page():
                         'LLM Base URL',
                         value=current_config.get('LLM_BASE_URL', ''),
                         placeholder='https://api.openai.com/v1'
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['LLM_BASE_URL']:
+                         ui.tooltip('API endpoint for the Language Model provider')
 
                     form_data['LLM_API_KEY'] = ui.input(
                         'LLM API Key',
@@ -1210,13 +1307,17 @@ def main_page():
                         placeholder='sk-proj-...',
                         password=True,
                         password_toggle_button=True
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['LLM_API_KEY']:
+                        ui.tooltip('Private key for authenticating with LLM provider')
 
                     form_data['LLM_MODEL'] = ui.select(
                         ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo', 'custom'],
                         value=current_config.get('LLM_MODEL', 'gpt-4o-mini'),
                         label='LLM Model'
-                    ).classes('w-full')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['LLM_MODEL']:
+                        ui.tooltip('Select the AI model for content analysis')
 
                     # Custom model input (shown if 'custom' selected)
                     custom_model_input = ui.input(
@@ -1266,98 +1367,120 @@ def main_page():
                     ui.label('Email Filtering').classes('text-h6 mb-3')
 
                     form_data['SUPPRESS_CATEGORIES'] = ui.input(
-                        'Suppress Categories (comma-separated)',
+                        'Suppress Categories',
                         value=current_config.get('SUPPRESS_CATEGORIES', 'promotional,newsletter,automated,spam'),
                         placeholder='promotional,newsletter,automated,spam'
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['SUPPRESS_CATEGORIES']:
+                        ui.tooltip('Comma-separated list of categories to exclude')
 
                     form_data['CLASSIFICATION_STRATEGY'] = ui.select(
                         ['heuristic', 'llm', 'hybrid'],
                         value=current_config.get('CLASSIFICATION_STRATEGY', 'hybrid'),
                         label='Classification Strategy'
-                    ).classes('w-full')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['CLASSIFICATION_STRATEGY']:
+                        ui.tooltip('Method used to categorize incoming emails')
 
                     with ui.row().classes('w-full gap-2'):
-                        ui.label('• Heuristic: Fast, free, ~90% accuracy').classes('text-caption text-grey-7')
+                        ui.label('• Heuristic: Fast, free, ~90% accuracy').classes('text-caption text-gray-400')
                     with ui.row().classes('w-full gap-2'):
-                        ui.label('• LLM: Accurate, costs ~$0.0001/email').classes('text-caption text-grey-7')
+                        ui.label('• LLM: Accurate, costs ~$0.0001/email').classes('text-caption text-gray-400')
                     with ui.row().classes('w-full gap-2 mb-3'):
-                        ui.label('• Hybrid: Best balance (recommended)').classes('text-caption text-grey-7')
+                        ui.label('• Hybrid: Best balance (recommended)').classes('text-caption text-gray-400')
 
                     form_data['CLASSIFICATION_MODEL'] = ui.input(
-                        'Classification Model (for LLM/Hybrid)',
+                        'Classification Model',
                         value=current_config.get('CLASSIFICATION_MODEL', 'gpt-4o-mini'),
                         placeholder='gpt-4o-mini'
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['CLASSIFICATION_MODEL']:
+                        ui.tooltip('Model used for LLM/Hybrid classification')
 
                     form_data['ALLOWLIST_DOMAINS'] = ui.input(
-                        'Allowlist Domains (force process, comma-separated)',
+                        'Allowlist Domains',
                         value=current_config.get('ALLOWLIST_DOMAINS', ''),
                         placeholder='@important-client.com,vip@partner.com'
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['ALLOWLIST_DOMAINS']:
+                        ui.tooltip('Always process emails from these domains')
 
                     form_data['SUPPRESS_DOMAINS'] = ui.input(
-                        'Blocklist Domains (force suppress, comma-separated)',
+                        'Blocklist Domains',
                         value=current_config.get('SUPPRESS_DOMAINS', ''),
                         placeholder='@marketing.spam.com,noreply@ads.com'
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['SUPPRESS_DOMAINS']:
+                        ui.tooltip('Always suppress emails from these domains')
 
                 # Internal Staff Filtering
                 with ui.card().classes('w-full mb-4'):
                     ui.label('Internal Staff Filtering').classes('text-h6 mb-3')
-                    ui.label('Exclude internal staff from CRM sync').classes('text-caption text-grey-7 mb-2')
+                    ui.label('Exclude internal staff from CRM sync').classes('text-caption text-gray-400 mb-2')
 
                     form_data['INTERNAL_DOMAINS'] = ui.input(
-                        'Internal Domains (comma-separated)',
+                        'Internal Domains',
                         value=current_config.get('INTERNAL_DOMAINS', ''),
                         placeholder='mycompany.com,partner.co'
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['INTERNAL_DOMAINS']:
+                        ui.tooltip('Domains to exclude from CRM sync')
 
                     form_data['INTERNAL_EMAILS'] = ui.input(
-                        'Internal Emails (comma-separated)',
+                        'Internal Emails',
                         value=current_config.get('INTERNAL_EMAILS', ''),
                         placeholder='admin@gmail.com,ceo@personal.com'
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['INTERNAL_EMAILS']:
+                        ui.tooltip('Specific email addresses to exclude')
 
                 # Search Provider Configuration
                 with ui.card().classes('w-full mb-4'):
                     ui.label('Search Provider Configuration').classes('text-h6 mb-3')
-                    ui.label('For company enrichment via web search').classes('text-caption text-grey-7 mb-2')
+                    ui.label('For company enrichment via web search').classes('text-caption text-gray-400 mb-2')
 
                     form_data['SEARCH_PROVIDERS'] = ui.input(
-                        'Search Providers (priority order, comma-separated)',
+                        'Search Providers',
                         value=current_config.get('SEARCH_PROVIDERS', 'duckduckgo,serper,serpapi'),
                         placeholder='duckduckgo,serper,serpapi'
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['SEARCH_PROVIDERS']:
+                        ui.tooltip('Priority list of search engines for enrichment')
 
                     form_data['SERPER_API_KEY'] = ui.input(
-                        'Serper API Key (optional)',
+                        'Serper API Key',
                         value=current_config.get('SERPER_API_KEY', ''),
                         placeholder='Your Serper.dev API key',
                         password=True,
                         password_toggle_button=True
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['SERPER_API_KEY']:
+                        ui.tooltip('API key for Serper.dev Google Search API')
 
                     form_data['SERPAPI_KEY'] = ui.input(
-                        'SerpAPI Key (optional)',
+                        'SerpAPI Key',
                         value=current_config.get('SERPAPI_KEY', ''),
                         placeholder='Your SerpAPI key',
                         password=True,
                         password_toggle_button=True
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['SERPAPI_KEY']:
+                        ui.tooltip('API key for SerpAPI Google Search API')
 
                 # Persistence Configuration
                 with ui.card().classes('w-full mb-4'):
                     ui.label('Persistence Configuration').classes('text-h6 mb-3')
 
                     form_data['PERSISTENCE_DB_PATH'] = ui.input(
-                        'Database Path (optional override)',
+                        'Database Path',
                         value=current_config.get('PERSISTENCE_DB_PATH', ''),
                         placeholder='./eml_processing.db'
-                    ).classes('w-full').props('outlined')
+                    ).classes('w-full').props('outlined dense')
+                    with form_data['PERSISTENCE_DB_PATH']:
+                        ui.tooltip('Path to the SQLite database file')
 
                     current_db = os.getenv('PERSISTENCE_DB_PATH', './eml_processing.db')
-                    ui.label(f'Current: {current_db}').classes('text-caption text-grey-7')
+                    ui.label(f'Current: {current_db}').classes('text-caption text-gray-400')
 
                 # Final action buttons
                 with ui.row().classes('gap-2 mt-4'):
@@ -1388,10 +1511,10 @@ def main_page():
                         if 'by_category' in stats:
                             for category, count in list(stats['by_category'].items())[:5]:
                                 with ui.column():
-                                    ui.label(category).classes('text-caption text-grey-7')
+                                    ui.label(category).classes('text-caption text-gray-400')
                                     ui.label(str(count)).classes('text-h6')
 
-                # Email table
+                # Email list
                 table_container = ui.column().classes('w-full')
 
                 def refresh_table():
@@ -1404,34 +1527,40 @@ def main_page():
 
                     table_container.clear()
                     with table_container:
-                        ui.label(f'Showing {len(emails)} suppressed emails').classes('text-caption mb-2')
+                        ui.label(f'Showing {len(emails)} suppressed emails').classes('text-caption text-gray-400 mb-2')
 
                         if emails:
-                            # Create table data
-                            columns = [
-                                {'name': 'timestamp', 'label': 'Date', 'field': 'timestamp', 'align': 'left'},
-                                {'name': 'sender', 'label': 'Sender', 'field': 'sender', 'align': 'left'},
-                                {'name': 'subject', 'label': 'Subject', 'field': 'subject', 'align': 'left'},
-                                {'name': 'category', 'label': 'Category', 'field': 'category', 'align': 'center'},
-                                {'name': 'reason', 'label': 'Reason', 'field': 'reason', 'align': 'center'},
-                            ]
+                            # Header
+                            with ui.row().classes('w-full px-4 py-2 border-b border-white/10 text-xs font-bold text-gray-400 uppercase tracking-wider'):
+                                ui.label('Date').classes('w-32')
+                                ui.label('Sender').classes('flex-[1]')
+                                ui.label('Subject').classes('flex-[2]')
+                                ui.label('Category').classes('w-32 text-center')
+                                ui.label('Reason').classes('flex-[1]')
 
-                            rows = []
+                            # Rows
                             for email in emails:
-                                rows.append({
-                                    'timestamp': email.get('timestamp', '')[:10],  # Show date only
-                                    'sender': email.get('sender', 'Unknown')[:40],  # Truncate
-                                    'subject': email.get('subject', 'No subject')[:50],  # Truncate
-                                    'category': email.get('category', 'unknown'),
-                                    'reason': email.get('reason', 'unknown')[:30],  # Truncate
-                                })
+                                date_str = email.get('timestamp', '')[:10]
+                                sender = email.get('sender', 'Unknown')[:40]
+                                subject = email.get('subject', 'No subject')[:50]
+                                category = email.get('category', 'unknown')
+                                reason = email.get('reason', 'unknown')[:30]
 
-                            ui.table(columns=columns, rows=rows, row_key='timestamp').classes('w-full')
+                                with ui.row().classes('w-full px-4 py-3 border-b border-white/5 items-center hover:bg-white/5 transition-colors'):
+                                    ui.label(date_str).classes('w-32 text-xs text-gray-500 font-mono')
+                                    ui.label(sender).classes('flex-[1] text-xs text-gray-400 truncate pr-2')
+                                    ui.label(subject).classes('flex-[2] font-medium text-sm text-white truncate pr-2')
+                                    with ui.element('div').classes('w-32 flex justify-center'):
+                                          # Use a simple badge for category
+                                          ui.label(category).classes('px-2 py-0.5 rounded-full text-[10px] bg-white/10 text-gray-300')
+                                    ui.label(reason).classes('flex-[1] text-xs text-gray-500 italic truncate')
+
                         else:
-                            ui.label('No suppressed emails found').classes('text-grey-7')
+                            ui.label('No suppressed emails found').classes('text-grey-7 italic')
 
                 # Refresh button
-                ui.button('Refresh', on_click=refresh_table, icon='refresh').props('color=primary')
+                with ui.button('Refresh', on_click=refresh_table, icon='refresh').props('color=primary unelevated'):
+                    ui.tooltip('Reload the list of suppressed emails')
 
                 # Initial load
                 refresh_table()
