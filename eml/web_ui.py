@@ -179,7 +179,30 @@ def create_header_with_tabs(dark_mode_handler, active_tab_name: str = 'dashboard
             
             # Left: App branding
             with ui.row().classes('items-center gap-3'):
-                ui.label('N').classes('w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-bold text-white')
+                # Inline SVG logo
+                ui.html('''
+                    <svg width="32" height="32" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                      <defs>
+                        <linearGradient id="logoGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+                          <stop offset="0%" style="stop-color:#818CF8;stop-opacity:1" />
+                          <stop offset="100%" style="stop-color:#22D3EE;stop-opacity:1" />
+                        </linearGradient>
+                      </defs>
+                      <g transform="translate(50,50)">
+                        <g transform="rotate(30)">
+                          <path d="M0,-40 L35,-20 L35,20 L0,40 L-35,20 L-35,-20 Z"
+                                fill="none"
+                                stroke="url(#logoGrad)"
+                                stroke-width="7"
+                                stroke-linejoin="round"/>
+                          <circle cx="0" cy="0" r="8" fill="#60A5FA" />
+                          <line x1="0" y1="0" x2="0" y2="-40" stroke="#60A5FA" stroke-width="4" />
+                          <line x1="0" y1="0" x2="25" y2="15" stroke="#60A5FA" stroke-width="4" />
+                          <line x1="0" y1="0" x2="-25" y2="15" stroke="#60A5FA" stroke-width="4" />
+                        </g>
+                      </g>
+                    </svg>
+                ''', sanitize=False).classes('flex-shrink-0')
                 ui.label('CRM AUTOMATOR').classes('text-sm font-bold tracking-wide dark:text-white text-gray-800')
 
             # Center: Tabs (Self-stretch to fill height)
@@ -216,13 +239,20 @@ def create_stat_card(title: str, value: int, icon: str = None, color: str = None
             with ui.column().classes('gap-1'):
                 ui.label(title).classes('text-xs text-gray-400 uppercase tracking-wider mb-1')
                 ui.label(str(value)).classes('text-3xl font-bold text-white')
-                
+
                 if trend and trend_value:
-                    trend_color = 'text-green-400' if trend == 'up' else 'text-red-400'
+                    # Map trend to color and icon
+                    trend_styles = {
+                        'up': ('text-green-400', 'trending_up'),
+                        'down': ('text-red-400', 'trending_down'),
+                        'neutral': ('text-gray-400', 'remove')  # horizontal line icon
+                    }
+                    trend_color, trend_icon = trend_styles.get(trend, ('text-gray-400', 'remove'))
+
                     with ui.row().classes('items-center gap-1 mt-1'):
-                        ui.icon('trending_up' if trend == 'up' else 'trending_down', size='xs').classes(trend_color)
+                        ui.icon(trend_icon, size='xs').classes(trend_color)
                         ui.label(trend_value).classes(f'text-xs {trend_color}')
-            
+
             if icon:
                 ui.icon(icon, size='md').classes('text-white/20')
 
@@ -1024,15 +1054,27 @@ def main_page():
             with ui.column().classes('w-full p-6 gap-6'):
                 # Stats overview
                 stats = get_database_stats()
+                total = stats['total'] if stats['total'] > 0 else 1  # Avoid division by zero
 
-                # Enhanced stat cards with icons
+                # Calculate percentages for visual consistency
+                processed_pct = (stats['processed'] / total * 100) if total > 0 else 0
+                suppressed_pct = (stats['suppressed'] / total * 100) if total > 0 else 0
+                failed_pct = (stats['failed'] / total * 100) if total > 0 else 0
+
+                # Enhanced stat cards with icons (all with 3rd row for visual balance)
                 with ui.row().classes('w-full gap-4 mb-6'):
-                    create_stat_card('TOTAL EMAILS', stats['total'], 'mail')
-                    create_stat_card('PROCESSED', stats['processed'], 'check_circle', 
-                                   trend='up' if stats['processed'] > 0 else None,
-                                   trend_value=f"+{stats['processed']}" if stats['processed'] > 0 else None)
-                    create_stat_card('SUPPRESSED', stats['suppressed'], 'block')
-                    create_stat_card('FAILED', stats['failed'], 'error')
+                    create_stat_card('TOTAL EMAILS', stats['total'], 'mail',
+                                   trend='neutral',
+                                   trend_value='All emails')
+                    create_stat_card('PROCESSED', stats['processed'], 'check_circle',
+                                   trend='up' if stats['processed'] > 0 else 'neutral',
+                                   trend_value=f"{processed_pct:.0f}% of total")
+                    create_stat_card('SUPPRESSED', stats['suppressed'], 'block',
+                                   trend='neutral',
+                                   trend_value=f"{suppressed_pct:.0f}% filtered")
+                    create_stat_card('FAILED', stats['failed'], 'error',
+                                   trend='neutral' if stats['failed'] == 0 else 'down',
+                                   trend_value=f"{failed_pct:.0f}% errors" if stats['failed'] > 0 else '0% errors')
 
                 # Recent Activity - Full width
                 with ui.card().classes('w-full p-0 gap-0'): # p-0 for table-like feel
