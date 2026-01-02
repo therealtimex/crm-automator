@@ -1330,8 +1330,10 @@ def main_page():
 
                     # Search and filters
                     with ui.row().classes('px-4 py-3 gap-2 border-b border-white/10'):
-                        search_input = ui.input('Search emails...').props('outlined dense').classes('flex-1')
-                        search_input.props('clearable')
+                        search_input = ui.input('Search emails...', 
+                                              on_change=lambda: handle_search()) \
+                                      .props('outlined dense debounce="500" clearable') \
+                                      .classes('flex-1')
 
                     # State for pagination
                     current_page = {'value': 1}
@@ -1460,9 +1462,8 @@ def main_page():
                         current_page['value'] = 1  # Reset to first page
                         load_activity(1, search_input.value or '')
 
-                    # Connect search input
-                    search_input.on('keyup.enter', handle_search)
-                    search_input.on('blur', handle_search)
+                    # Connect search input (Enter key support)
+                    search_input.on('keydown.enter', handle_search)
 
                     # Initial load
                     load_activity()
@@ -2112,4 +2113,8 @@ def run_ui(host: str = '127.0.0.1', port: int = 8080, show_browser: bool = False
 
 
 if __name__ == '__main__':
-    run_ui()
+    try:
+        run_ui()
+    except KeyboardInterrupt:
+        print("\nStopping CRM Automator... Bye!")
+        sys.exit(0)

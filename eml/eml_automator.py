@@ -13,6 +13,7 @@
 # ///
 
 import os
+import sys
 import email
 import logging
 import base64
@@ -770,4 +771,8 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user. Bye!")
+        sys.exit(0)
