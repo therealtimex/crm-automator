@@ -6,6 +6,15 @@ from email.utils import parseaddr
 import instructor
 import openai
 
+# Import content cleaner for optimization
+try:
+    from filters.content_cleaner import ContentCleaner
+except ImportError:
+    # Fallback if running from different context
+    import sys
+    sys.path.insert(0, os.path.dirname(__file__))
+    from filters.content_cleaner import ContentCleaner
+
 logger = logging.getLogger(__name__)
 
 # LLM defaults
@@ -103,18 +112,26 @@ class IntelligenceLayer:
              logger.error("Cannot analyze text: LLM_BASE_URL is not set")
              return None
 
-        # Smart Cleaning Pipeline (Markdown-like & Noise Reduction)
-        # We only clean the main text/body, not the structured metadata
-        cleaned_body = self._smart_clean(text)
-        
+        # Use optimized content cleaner (75% token reduction)
+        # EXTREMELY aggressive cleaning for 4K context models with instructor overhead
+        # Instructor's Pydantic schema adds ~3800 tokens (!), leaving only ~300 for content
+        logger.debug(f"Original text length: {len(text)} chars")
+        cleaned_body = ContentCleaner.clean_email_body(text, max_length=300)
+        logger.info(f"Cleaned body length: {len(cleaned_body)} chars (reduced from {len(text)})")
+
         full_prompt_text = ""
         if metadata:
             full_prompt_text += "--- METADATA ---\n"
             for k, v in metadata.items():
-                full_prompt_text += f"{k}: {v}\n"
+                # Truncate metadata values to avoid token overflow
+                value_str = str(v)
+                if len(value_str) > 200:
+                    value_str = value_str[:200] + "..."
+                full_prompt_text += f"{k}: {value_str}\n"
             full_prompt_text += "\n--- CONTENT ---\n"
-        
+
         full_prompt_text += cleaned_body
+        logger.info(f"Total prompt length: {len(full_prompt_text)} chars (~{len(full_prompt_text)//4} tokens estimate)")
 
         system_prompt = (
             "You are a CRM Intelligence Agent. Extract structured data from the provided text.\n"
@@ -392,15 +409,19 @@ class IntelligenceLayer:
         
         # Parse scraped content with LLM
         full_text = "\n\n".join(combined_content)
+
+        # Clean and truncate website content for LLM (avoid token overflow)
+        cleaned_text = ContentCleaner.clean_email_body(full_text, max_length=2000)
+
         system_prompt = "Extract structured company information from the following website content."
-        
+
         try:
             return self.client.chat.completions.create(
                 model=self.model,
                 response_model=CompanyDetails,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": full_text}
+                    {"role": "user", "content": cleaned_text}
                 ]
             )
         except Exception as e:
@@ -481,11 +502,17 @@ class IntelligenceLayer:
         if not results:
             logger.warning("No search results to parse")
             return None
-        
+
         logger.debug(f"Parsing {len(results)} search results")
         combined_text = "\n\n".join([f"**{r['title']}**\n{r['snippet']}" for r in results])
+
+        # Truncate search results to avoid token overflow (search results are usually concise)
+        if len(combined_text) > 1500:
+            combined_text = combined_text[:1500] + "..."
+            logger.debug(f"Truncated search results to 1500 chars")
+
         system_prompt = "Parse the following search results into a structured CompanyDetails object."
-        
+
         try:
             return self.client.chat.completions.create(
                 model=self.model,

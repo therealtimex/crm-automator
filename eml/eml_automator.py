@@ -476,9 +476,16 @@ class EMLProcessor:
                         if len(attachments) > 0:
                             eml_attachment_url = attachments[0].get("src")
                             crm_activities_created += 1
+                            
+                            # Sanitize payload for JSON logging (remove binary content)
+                            payload_kwargs = note_kwargs.copy()
+                            if "files" in payload_kwargs:
+                                del payload_kwargs["files"]
+                                payload_kwargs["_attachment_info"] = f"File: {filename} (binary content omitted)"
+
                             crm_activities_payload.append({
                                 "text": activity_text,
-                                **note_kwargs
+                                **payload_kwargs
                             })
 
                 # Subsequent notes: reuse URL

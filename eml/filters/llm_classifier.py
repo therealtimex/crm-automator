@@ -11,6 +11,7 @@ import openai
 
 from .categories import EmailCategory
 from .llm_error_handler import SmartLLMHandler
+from .content_cleaner import ContentCleaner
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +61,11 @@ From: {sender}
 To: {recipient}
 Subject: {subject}
 
-Body Preview (first 500 chars):
+Body Preview:
 {preview}
+
+Metadata Signals:
+{signals}
 
 REQUIRED OUTPUT FORMAT (JSON):
 {{
@@ -126,15 +130,15 @@ Return ONLY valid JSON."""
         self,
         email_msg: Message,
         email_body_preview: str,
-        max_preview_chars: int = 500
+        max_preview_chars: int = 1500
     ) -> Optional[EmailCategory]:
         """
-        Use LLM to classify email.
+        Use LLM to classify email with optimized content cleaning.
 
         Args:
             email_msg: Email message object
-            email_body_preview: Email body text (will be truncated)
-            max_preview_chars: Maximum characters to send to LLM
+            email_body_preview: Email body text (will be cleaned and truncated)
+            max_preview_chars: Maximum characters to send to LLM (default: 1500)
 
         Returns:
             EmailCategory if successful, None if LLM call fails
@@ -147,13 +151,20 @@ Return ONLY valid JSON."""
         sender = email_msg.get('From', 'Unknown')
         recipient = email_msg.get('To', 'Unknown')
         subject = email_msg.get('Subject', 'No Subject')
-        preview = email_body_preview[:max_preview_chars]
+
+        # Clean and optimize email body (removes HTML, quoted replies, footers)
+        cleaned_body = ContentCleaner.clean_email_body(email_body_preview, max_preview_chars)
+
+        # Extract metadata signals
+        signals = ContentCleaner.extract_metadata_signals(email_msg)
+        signals_str = self._format_signals(signals)
 
         prompt = self.CLASSIFICATION_PROMPT_TEMPLATE.format(
             sender=sender,
             recipient=recipient,
             subject=subject,
-            preview=preview
+            preview=cleaned_body,
+            signals=signals_str
         )
 
         try:
@@ -218,9 +229,34 @@ Return ONLY valid JSON."""
                 self.enabled = False
             return None
 
+    def _format_signals(self, signals: dict) -> str:
+        """
+        Format metadata signals for inclusion in prompt.
+
+        Args:
+            signals: Dict of metadata signals
+
+        Returns:
+            Formatted string for prompt
+        """
+        if not signals:
+            return "- None"
+
+        signal_lines = []
+        if signals.get('list_unsubscribe'):
+            signal_lines.append("- Contains List-Unsubscribe header (Likely Newsletter/Promotional)")
+        if signals.get('priority'):
+            signal_lines.append(f"- Priority/Importance level: {signals['priority']}")
+        if signals.get('auto_submitted'):
+            signal_lines.append(f"- Auto-Submitted header: {signals['auto_submitted']} (Automated message)")
+        if signals.get('bulk_mail'):
+            signal_lines.append("- Bulk mail indicator present (Mass mailing)")
+
+        return '\n'.join(signal_lines) if signal_lines else "- None"
+
     def _parse_json_response(self, text: str) -> Optional[Dict]:
         """
-        Robustly parse JSON from LLM response, handling markdown blocks.
+        Robustly parse JSON from LLM response, handling markdown blocks and comments.
 
         Args:
             text: Raw LLM response text
@@ -228,9 +264,20 @@ Return ONLY valid JSON."""
         Returns:
             Parsed dict or None if parsing fails
         """
-        # Stage 1: Direct parsing
+        if not text:
+            return None
+
+        text = text.strip()
+
+        def strip_comments(json_str: str) -> str:
+            """Strip C-style comments from JSON string."""
+            # Remove // comments (but be careful about URLs)
+            # Simple approach: remove anything from // to end of line if not preceded by :
+            return re.sub(r'(?<!:)\/\/.*$', '', json_str, flags=re.MULTILINE)
+
+        # Stage 1: Direct parsing with comment stripping
         try:
-            return json.loads(text.strip())
+            return json.loads(strip_comments(text))
         except json.JSONDecodeError:
             pass
 
@@ -239,7 +286,7 @@ Return ONLY valid JSON."""
             json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
             if json_match:
                 try:
-                    return json.loads(json_match.group(1).strip())
+                    return json.loads(strip_comments(json_match.group(1).strip()))
                 except json.JSONDecodeError:
                     pass
 
@@ -248,7 +295,7 @@ Return ONLY valid JSON."""
             start = text.find('{')
             end = text.rfind('}')
             if start != -1 and end != -1:
-                return json.loads(text[start:end+1])
+                return json.loads(strip_comments(text[start:end+1]))
         except (json.JSONDecodeError, ValueError):
             pass
 
