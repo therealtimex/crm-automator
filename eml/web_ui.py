@@ -1402,9 +1402,34 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
 def main_page():
     """Main page with tabbed interface (email-archiver style)"""
     app_dark_mode = apply_nexus_theme()
-    
+
     # Create header with tabs
     tabs, dashboard_tab, upload_tab, analytics_tab, suppressed_tab, config_tab = create_header_with_tabs(app_dark_mode)
+
+    # Page Visibility API - Pause auto-refresh when tab is not visible to save resources
+    page_is_visible = {'value': True}  # Track if page is visible
+
+    # Setup Page Visibility API listener
+    ui.run_javascript('''
+        // Page Visibility API to detect when user switches tabs
+        document.addEventListener('visibilitychange', () => {
+            const isVisible = !document.hidden;
+            // Store visibility state in window object for access from Python
+            window.pageIsVisible = isVisible;
+        });
+        // Initialize
+        window.pageIsVisible = !document.hidden;
+    ''')
+
+    # Timer to sync visibility state from JavaScript to Python
+    def sync_visibility_state():
+        """Sync page visibility state from JavaScript to Python"""
+        ui.run_javascript(
+            'return window.pageIsVisible;',
+            callback=lambda visible: page_is_visible.__setitem__('value', visible if visible is not None else True)
+        )
+
+    ui.timer(2.0, sync_visibility_state)  # Check every 2 seconds
 
     # Main content with tab panels
     with ui.tab_panels(tabs, value=dashboard_tab).classes('w-full flex-1 bg-transparent'):
@@ -1620,8 +1645,8 @@ def main_page():
 
                     # Auto-refresh timer (5 second interval)
                     def auto_refresh():
-                        """Automatically refresh activity if enabled and modal is closed"""
-                        if auto_refresh_enabled['value'] and not modal_is_open['value']:
+                        """Automatically refresh activity if enabled, modal is closed, and page is visible"""
+                        if auto_refresh_enabled['value'] and not modal_is_open['value'] and page_is_visible['value']:
                             load_activity(current_page['value'], search_input.value or '')
 
                     ui.timer(5.0, auto_refresh)
@@ -1737,23 +1762,49 @@ def main_page():
                     ui.label('LIVE LOGS').classes('text-xs font-bold text-gray-400 uppercase tracking-wider mb-2')
                     log_container = ui.column().classes('w-full bg-gray-900 p-4 rounded font-mono text-xs text-gray-300').style('max-height: 400px; overflow-y: auto')
 
+                    # Track number of logs already displayed for efficient appending
+                    displayed_log_count = {'value': 0}
+
                     # Auto-update logs (only when processing)
                     def update_logs():
-                        log_container.clear()
-                        with log_container:
-                            for log in state.logs[-MAX_LOG_LINES:]:  # Show last N logs
-                                ui.label(log).classes('font-mono text-sm')
+                        """Efficiently append only new log entries instead of rebuilding entire container"""
+                        current_log_count = len(state.logs)
 
-                        # Auto-scroll to bottom to show latest logs
-                        ui.run_javascript(f'''
-                            const container = document.getElementById('{log_container.id}');
-                            if (container) {{
-                                container.scrollTop = container.scrollHeight;
-                            }}
-                        ''')
+                        # If log count decreased (e.g., cleared), rebuild from scratch
+                        if current_log_count < displayed_log_count['value']:
+                            log_container.clear()
+                            displayed_log_count['value'] = 0
 
-                    # Timer only active when processing
-                    ui.timer(TIMER_INTERVAL, update_logs, active=lambda: state.is_processing)
+                        # Get logs to display (last MAX_LOG_LINES)
+                        logs_to_show = state.logs[-MAX_LOG_LINES:]
+
+                        # If we're showing fewer logs than displayed, rebuild
+                        if len(logs_to_show) < displayed_log_count['value']:
+                            log_container.clear()
+                            with log_container:
+                                for log in logs_to_show:
+                                    ui.label(log).classes('font-mono text-sm')
+                            displayed_log_count['value'] = len(logs_to_show)
+                        else:
+                            # Append only new logs
+                            new_logs = logs_to_show[displayed_log_count['value']:]
+                            if new_logs:
+                                with log_container:
+                                    for log in new_logs:
+                                        ui.label(log).classes('font-mono text-sm')
+                                displayed_log_count['value'] = len(logs_to_show)
+
+                        # Auto-scroll to bottom to show latest logs (only if new logs were added)
+                        if displayed_log_count['value'] > 0:
+                            ui.run_javascript(f'''
+                                const container = document.getElementById('{log_container.id}');
+                                if (container) {{
+                                    container.scrollTop = container.scrollHeight;
+                                }}
+                            ''')
+
+                    # Timer only active when processing and page is visible
+                    ui.timer(TIMER_INTERVAL, update_logs, active=lambda: state.is_processing and page_is_visible['value'])
 
         # ========== ANALYTICS TAB ==========
         with ui.tab_panel(analytics_tab):
@@ -2213,10 +2264,39 @@ def main_page():
         # ========== SUPPRESSED TAB ==========
         with ui.tab_panel(suppressed_tab):
             with ui.column().classes('w-full p-6 gap-4'):
+                # State for auto-refresh
+                auto_refresh_enabled_suppressed = {'value': False}  # Disabled by default
+                last_refresh_time_suppressed = {'value': datetime.now()}
+
                 # Page header
                 with ui.row().classes('w-full items-center justify-between mb-2'):
                     ui.label('Suppressed Emails').classes('text-h4 font-bold')
-                    ui.icon('filter_list', size='lg').classes('text-primary')
+
+                    # Auto-refresh controls
+                    with ui.row().classes('gap-2 items-center'):
+                        ui.icon('filter_list', size='lg').classes('text-primary')
+
+                        # Last refresh indicator
+                        refresh_indicator_suppressed = ui.label().classes('text-xs text-gray-500')
+
+                        def update_refresh_indicator_suppressed():
+                            if not auto_refresh_enabled_suppressed['value']:
+                                refresh_indicator_suppressed.text = 'Auto-refresh disabled'
+                            else:
+                                elapsed = (datetime.now() - last_refresh_time_suppressed['value']).seconds
+                                refresh_indicator_suppressed.text = f'Updated {elapsed}s ago'
+
+                        # Update indicator every second
+                        ui.timer(1.0, update_refresh_indicator_suppressed)
+
+                        # Auto-refresh toggle
+                        def toggle_auto_refresh_suppressed(e):
+                            auto_refresh_enabled_suppressed['value'] = e.value
+
+                        ui.switch(value=False, on_change=toggle_auto_refresh_suppressed) \
+                            .props('dense color=primary') \
+                            .classes('ml-2') \
+                            .tooltip('Toggle auto-refresh (10s interval)')
 
                 # Filters
                 search_input = ui.input('Search', placeholder='Search sender or subject...').classes('w-full mb-2')
@@ -2242,6 +2322,9 @@ def main_page():
 
                 def refresh_table():
                     """Refresh the email table"""
+                    # Update last refresh time
+                    last_refresh_time_suppressed['value'] = datetime.now()
+
                     emails = get_suppressed_emails(
                         limit=100,
                         category=category_select.value if category_select.value != 'All' else None,
@@ -2291,6 +2374,14 @@ def main_page():
                 # Auto-refresh on filter change
                 search_input.on('blur', refresh_table)
                 category_select.on('update:model-value', refresh_table)
+
+                # Auto-refresh timer (10 second interval - less frequent than Recent Activity)
+                def auto_refresh_suppressed():
+                    """Automatically refresh suppressed emails if enabled and page is visible"""
+                    if auto_refresh_enabled_suppressed['value'] and page_is_visible['value']:
+                        refresh_table()
+
+                ui.timer(10.0, auto_refresh_suppressed)
 
 
 def run_ui(host: str = '127.0.0.1', port: int = 8080, show_browser: bool = False, env_path: str = None):
