@@ -924,7 +924,15 @@ class ConfigManager:
     def test_crm_connection(self, api_key: str, base_url: str) -> Dict[str, Any]:
         """Test CRM API connectivity"""
         try:
-            from crm_client import RealTimeXClient
+            try:
+                from eml.crm_client import RealTimeXClient
+            except ImportError:
+                try:
+                    from crm_client import RealTimeXClient
+                except ImportError:
+                    import sys
+                    sys.path.insert(0, os.path.dirname(__file__))
+                    from crm_client import RealTimeXClient
 
             if not api_key or not base_url:
                 return {

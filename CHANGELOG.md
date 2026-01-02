@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.11] - 2026-01-01
+
+### Fixed
+- **CRM Connection Test**: Fixed `ModuleNotFoundError: No module named 'crm_client'` when testing connection from the Web UI.
+- **Imports**: Standardized all remaining local/function-scope imports to use the robust tiered pattern.
+
 ## [1.9.10] - 2026-01-01
 
 ### Fixed

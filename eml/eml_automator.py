@@ -677,9 +677,14 @@ def main():
     # Launch web UI if requested
     if args.ui:
         try:
-            from web_ui import run_ui
-        except ImportError:
             from eml.web_ui import run_ui
+        except ImportError:
+            try:
+                from web_ui import run_ui
+            except ImportError:
+                import sys
+                sys.path.insert(0, os.path.dirname(__file__))
+                from web_ui import run_ui
 
         logger.info("Launching web UI...")
         if args.browser:
@@ -806,10 +811,15 @@ def main():
         if args.show_filter_stats:
             try:
                 from eml.filters.logging import print_suppression_report
-                print_suppression_report(persistence)
             except ImportError:
-                from filters.logging import print_suppression_report
-                print_suppression_report(persistence)
+                try:
+                    from filters.logging import print_suppression_report
+                except ImportError:
+                    import sys
+                    sys.path.insert(0, os.path.dirname(__file__))
+                    from filters.logging import print_suppression_report
+            
+            print_suppression_report(persistence)
 
     except Exception as e:
         logger.critical(f"Fatal error during processing: {e}", exc_info=True)
