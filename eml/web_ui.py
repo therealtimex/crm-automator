@@ -789,6 +789,8 @@ class ConfigManager:
             }
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return {
                 'success': False,
                 'message': f'Connection failed: {str(e)}'
@@ -989,13 +991,22 @@ def main_page():
 
                     async def handle_upload(e):
                         """Handle file upload"""
-                        # e.content is a single file-like object, not a list
-                        file = e.content
-                        if e.name.endswith('.eml'):
+                        # Debug: Check for content attribute (files might be rejected if too large)
+                        # Debug: Check for file attribute (files might be rejected if too large)
+                        if not hasattr(e, 'file'):
+                            print(f"DEBUG: Upload event missing file. Attributes: {dir(e)}")
+                            ui.notify(f"File could not be processed (possibly rejected/too large).", type='negative')
+                            return
+
+                        # e.file is a FileUpload object which contains name, content etc.
+                        file_obj = e.file
+                        if file_obj.name.endswith('.eml'):
                             # Save to temp directory
-                            temp_path = Path('/tmp') / e.name
+                            temp_path = Path('/tmp') / file_obj.name
                             with open(temp_path, 'wb') as f:
-                                f.write(file.read())
+                                # Use async read() method mandated by NiceGUI FileUpload interface
+                                file_data = await file_obj.read()
+                                f.write(file_data)
                             state.uploaded_files.append(temp_path)
 
                         # Update file list display
@@ -1019,7 +1030,8 @@ def main_page():
                             on_upload=handle_upload,
                             multiple=True,
                             auto_upload=True,
-                            label='Choose Files'
+                            label='Choose Files',
+                            max_file_size=20_000_000  # 20MB limit
                         ).props('accept=.eml color=primary flat').classes('w-full max-w-xs')
 
                 # Processing options
@@ -1311,29 +1323,13 @@ def main_page():
                     with form_data['LLM_API_KEY']:
                         ui.tooltip('Private key for authenticating with LLM provider')
 
-                    form_data['LLM_MODEL'] = ui.select(
-                        ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo', 'custom'],
+                    form_data['LLM_MODEL'] = ui.input(
+                        'LLM Model',
                         value=current_config.get('LLM_MODEL', 'gpt-4o-mini'),
-                        label='LLM Model'
+                        placeholder='gpt-4o-mini'
                     ).classes('w-full').props('outlined dense')
                     with form_data['LLM_MODEL']:
-                        ui.tooltip('Select the AI model for content analysis')
-
-                    # Custom model input (shown if 'custom' selected)
-                    custom_model_input = ui.input(
-                        'Custom Model Name',
-                        placeholder='your-custom-model'
-                    ).classes('w-full').props('outlined')
-                    custom_model_input.visible = False
-
-                    def on_model_change(e):
-                        if e.value == 'custom':
-                            custom_model_input.visible = True
-                        else:
-                            custom_model_input.visible = False
-                            form_data['LLM_MODEL'].value = e.value
-
-                    form_data['LLM_MODEL'].on('update:model-value', on_model_change)
+                        ui.tooltip('The AI model name (e.g., gpt-4o, claude-3-5-sonnet)')
 
                     llm_status_label = ui.label().classes('mt-2')
 
@@ -1342,7 +1338,7 @@ def main_page():
                         llm_status_label.text = '⏳ Testing connection...'
                         await asyncio.sleep(0.1)
 
-                        model = custom_model_input.value if form_data['LLM_MODEL'].value == 'custom' else form_data['LLM_MODEL'].value
+                        model = form_data['LLM_MODEL'].value
 
                         result = await asyncio.to_thread(
                             config_manager.test_llm_connection,
@@ -1412,6 +1408,13 @@ def main_page():
                     ).classes('w-full').props('outlined dense')
                     with form_data['SUPPRESS_DOMAINS']:
                         ui.tooltip('Always suppress emails from these domains')
+
+                    form_data['LOG_SUPPRESSED'] = ui.checkbox(
+                        'Log Suppressed Emails',
+                        value=current_config.get('LOG_SUPPRESSED', 'true').lower() == 'true'
+                    ).props('dense')
+                    with form_data['LOG_SUPPRESSED']:
+                        ui.tooltip('Store suppressed emails in the database log')
 
                 # Internal Staff Filtering
                 with ui.card().classes('w-full mb-4'):
@@ -1484,8 +1487,47 @@ def main_page():
 
                 # Final action buttons
                 with ui.row().classes('gap-2 mt-4'):
-                    ui.button('Save Configuration', on_click=save_configuration, icon='save').props('color=primary')
-                    ui.button('Reload from File', on_click=lambda: ui.navigate.reload(), icon='refresh').props('outline')
+                    ui.button('Save Configuration', on_click=save_configuration, icon='save').props('color=primary unelevated')
+                    
+                    # Import Configuration Dialog
+                    with ui.dialog() as import_dialog, ui.card():
+                        ui.label('Import Configuration').classes('text-h6')
+                        ui.label('Upload an .env file to populate fields').classes('text-caption text-gray-400')
+                        
+                        async def handle_import(e):
+                            try:
+                                # Access content via e.file.read() (async)
+                                if hasattr(e, 'file'):
+                                    content_bytes = await e.file.read()
+                                    content = content_bytes.decode('utf-8')
+                                else:
+                                    # Fallback (unlikely given typical NiceGUI versions > 1.4)
+                                    raise Exception("Event has no 'file' attribute")
+
+                                count = 0
+                                count = 0
+                                for line in content.splitlines():
+                                    line = line.strip()
+                                    if not line or line.startswith('#'):
+                                        continue
+                                    if '=' in line:
+                                        key, value = line.split('=', 1)
+                                        key = key.strip()
+                                        value = value.strip().strip("'").strip('"')
+                                        if key in form_data:
+                                            form_data[key].value = value
+                                            count += 1
+                                
+                                ui.notify(f'Imported {count} configuration values', type='positive')
+                                import_dialog.close()
+                            except Exception as ex:
+                                ui.notify(f'Failed to import: {str(ex)}', type='negative')
+
+                        ui.upload(on_upload=handle_import, auto_upload=True).props('accept=.env flat').classes('w-full')
+                        ui.button('Close', on_click=import_dialog.close).props('flat')
+
+                    with ui.button('Import Configuration', on_click=import_dialog.open, icon='upload_file').props('outline'):
+                        ui.tooltip('Import values from an .env file')
 
         # ========== SUPPRESSED TAB ==========
         with ui.tab_panel(suppressed_tab):
