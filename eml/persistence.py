@@ -56,7 +56,16 @@ class PersistenceLayer:
                 crm_contacts_created INTEGER DEFAULT 0,
                 crm_companies_created INTEGER DEFAULT 0,
                 crm_activities_created INTEGER DEFAULT 0,
+                crm_deals_created INTEGER DEFAULT 0,
+                crm_tasks_created INTEGER DEFAULT 0,
                 crm_error TEXT,
+
+                -- CRM Payloads (JSON strings)
+                crm_contacts_payload TEXT,
+                crm_companies_payload TEXT,
+                crm_activities_payload TEXT,
+                crm_deals_payload TEXT,
+                crm_tasks_payload TEXT,
 
                 -- Error Info (if status='failed')
                 error_message TEXT,
@@ -78,6 +87,25 @@ class PersistenceLayer:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_processing_date ON processing_log(processing_started_at)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON processing_log(created_at)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_hash ON processing_log(file_hash)")
+
+        # ===== Schema Migrations =====
+        # Add CRM payload columns if they don't exist (for existing databases)
+        cursor.execute("PRAGMA table_info(processing_log)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+
+        migrations = [
+            ("crm_deals_created", "ALTER TABLE processing_log ADD COLUMN crm_deals_created INTEGER DEFAULT 0"),
+            ("crm_tasks_created", "ALTER TABLE processing_log ADD COLUMN crm_tasks_created INTEGER DEFAULT 0"),
+            ("crm_contacts_payload", "ALTER TABLE processing_log ADD COLUMN crm_contacts_payload TEXT"),
+            ("crm_companies_payload", "ALTER TABLE processing_log ADD COLUMN crm_companies_payload TEXT"),
+            ("crm_activities_payload", "ALTER TABLE processing_log ADD COLUMN crm_activities_payload TEXT"),
+            ("crm_deals_payload", "ALTER TABLE processing_log ADD COLUMN crm_deals_payload TEXT"),
+            ("crm_tasks_payload", "ALTER TABLE processing_log ADD COLUMN crm_tasks_payload TEXT"),
+        ]
+
+        for column_name, migration_sql in migrations:
+            if column_name not in existing_columns:
+                cursor.execute(migration_sql)
 
         # ===== Legacy Tables (for backward compatibility during transition) =====
         # These can be removed after confirming no dependencies
@@ -168,7 +196,15 @@ class PersistenceLayer:
         crm_contacts_created: int = 0,
         crm_companies_created: int = 0,
         crm_activities_created: int = 0,
+        crm_deals_created: int = 0,
+        crm_tasks_created: int = 0,
         crm_error: Optional[str] = None,
+        # CRM Payloads
+        crm_contacts_payload: Optional[str] = None,
+        crm_companies_payload: Optional[str] = None,
+        crm_activities_payload: Optional[str] = None,
+        crm_deals_payload: Optional[str] = None,
+        crm_tasks_payload: Optional[str] = None,
         # Error fields
         error_message: Optional[str] = None,
         error_type: Optional[str] = None,
@@ -197,7 +233,14 @@ class PersistenceLayer:
                     crm_contacts_created = ?,
                     crm_companies_created = ?,
                     crm_activities_created = ?,
+                    crm_deals_created = ?,
+                    crm_tasks_created = ?,
                     crm_error = ?,
+                    crm_contacts_payload = ?,
+                    crm_companies_payload = ?,
+                    crm_activities_payload = ?,
+                    crm_deals_payload = ?,
+                    crm_tasks_payload = ?,
                     error_message = ?,
                     error_type = ?,
                     error_traceback = ?,
@@ -212,7 +255,14 @@ class PersistenceLayer:
                 crm_contacts_created,
                 crm_companies_created,
                 crm_activities_created,
+                crm_deals_created,
+                crm_tasks_created,
                 crm_error,
+                crm_contacts_payload,
+                crm_companies_payload,
+                crm_activities_payload,
+                crm_deals_payload,
+                crm_tasks_payload,
                 error_message,
                 error_type,
                 error_traceback,

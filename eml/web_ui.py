@@ -1220,6 +1220,31 @@ def show_processing_detail(log_entry: Dict[str, Any]):
                                         ui.label(str(activities_created)).classes('text-3xl font-bold text-green-400')
                                         ui.label('Activities').classes('text-xs text-gray-400')
 
+                            # CRM Payloads
+                            ui.label('Payloads').classes('text-xs font-bold text-blue-400 uppercase mt-4 mb-2')
+                            
+                            payloads = [
+                                ("Contacts Payload", log_entry.get('crm_contacts_payload'), contacts_created),
+                                ("Companies Payload", log_entry.get('crm_companies_payload'), companies_created),
+                                ("Activities Payload", log_entry.get('crm_activities_payload'), activities_created),
+                                ("Deals Payload", log_entry.get('crm_deals_payload'), log_entry.get('crm_deals_created', 0)),
+                                ("Tasks Payload", log_entry.get('crm_tasks_payload'), log_entry.get('crm_tasks_created', 0))
+                            ]
+
+                            for label, payload_json, count in payloads:
+                                if payload_json:
+                                    with ui.expansion(f"{label} ({count} items)", icon="code").classes("w-full bg-blue-900/10 border border-blue-500/20 rounded mb-2"):
+                                        try:
+                                            import json
+                                            data = json.loads(payload_json)
+                                            ui.json_editor({'content': {'json': data}}).classes('w-full')
+                                        except:
+                                            ui.label(str(payload_json)).classes('text-xs font-mono whitespace-pre-wrap p-2')
+                                elif count > 0:
+                                     # Show empty payload warning if count > 0 but no payload (legacy records)
+                                     with ui.expansion(f"{label} ({count} items - Legacy)", icon="warning").classes("w-full bg-orange-900/10 border border-orange-500/20 rounded mb-2"):
+                                         ui.label("Payload data not available for this record.").classes("text-xs text-gray-400 p-2")
+
                             # CRM Error
                             if crm_error:
                                 with ui.card().classes('w-full bg-red-900/20 border border-red-500/20'):

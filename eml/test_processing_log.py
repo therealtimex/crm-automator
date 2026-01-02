@@ -22,7 +22,17 @@ def test_processing_log():
         from eml.persistence import PersistenceLayer
 
     # Create test database
-    test_db = PersistenceLayer()
+    import tempfile
+    import shutil
+    
+    # Create a temporary directory
+    temp_dir = tempfile.mkdtemp()
+    db_path = os.path.join(temp_dir, "test_processing.db")
+    
+    # Override ENV to force usage of temp db
+    os.environ["PERSISTENCE_DB_PATH"] = db_path
+    
+    test_db = PersistenceLayer(db_name="test_processing.db")
     print(f"\n1. Database initialized at: {test_db.db_path}")
 
     # Verify table exists
@@ -49,7 +59,11 @@ def test_processing_log():
         'sender', 'recipient', 'subject', 'email_date',
         'status', 'processing_started_at', 'processing_completed_at', 'processing_duration_ms',
         'suppression_category', 'suppression_reason',
-        'crm_contacts_created', 'crm_companies_created', 'crm_activities_created', 'crm_error',
+        'crm_contacts_created', 'crm_companies_created', 'crm_activities_created',
+        'crm_deals_created', 'crm_tasks_created',
+        'crm_contacts_payload', 'crm_companies_payload', 'crm_activities_payload',
+        'crm_deals_payload', 'crm_tasks_payload',
+        'crm_error',
         'error_message', 'error_type', 'error_traceback',
         'ai_summary', 'created_at'
     ]
@@ -96,7 +110,8 @@ def test_processing_log():
         processing_duration_ms=1500,
         crm_contacts_created=2,
         crm_companies_created=1,
-        crm_activities_created=3
+        crm_activities_created=3,
+        crm_contacts_payload='[{"email": "test@example.com"}]'
     )
     print("   ✓ Processing completed successfully")
 
@@ -199,8 +214,11 @@ def test_processing_log():
     print("  • Processing duration metrics")
     print("  • Full error tracking with tracebacks")
     print("  • AI analysis summary storage")
-    print("  • Advanced analytics queries")
+    print("   • Advanced analytics queries")
     print()
+    
+    # Cleanup
+    shutil.rmtree(temp_dir)
 
     return True
 

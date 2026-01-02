@@ -203,6 +203,15 @@ class EMLProcessor:
             crm_contacts_created = 0
             crm_companies_created = 0
             crm_activities_created = 0
+            crm_deals_created = 0
+            crm_tasks_created = 0
+
+            # Track CRM Payloads
+            crm_contacts_payload = []
+            crm_companies_payload = []
+            crm_activities_payload = []
+            crm_deals_payload = []
+            crm_tasks_payload = []
 
             # Prepare metadata for intelligence layer
             metadata = {
@@ -310,6 +319,11 @@ class EMLProcessor:
                         if company_id:
                             company_cache[domain] = company_id
                             crm_companies_created += 1
+                            crm_companies_payload.append({
+                                "name": company_name,
+                                "website": domain,
+                                **company_kwargs
+                            })
 
                 if company_id and not primary_company_id:
                     primary_company_id = company_id
@@ -347,6 +361,13 @@ class EMLProcessor:
                     contact_cache[email_addr] = contact_id
                     resolved_contacts.append((email_addr, contact_id))
                     crm_contacts_created += 1
+                    crm_contacts_payload.append({
+                        "email": email_addr,
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "company_id": company_id or primary_company_id,
+                        **contact_kwargs
+                    })
 
 
             # Action Logic
@@ -454,6 +475,10 @@ class EMLProcessor:
                         if len(attachments) > 0:
                             eml_attachment_url = attachments[0].get("src")
                             crm_activities_created += 1
+                            crm_activities_payload.append({
+                                "text": activity_text,
+                                **note_kwargs
+                            })
 
                 # Subsequent notes: reuse URL
                 elif eml_attachment_url:
@@ -464,10 +489,18 @@ class EMLProcessor:
                     }]
                     self.crm.log_activity(activity_text, **note_kwargs)
                     crm_activities_created += 1
+                    crm_activities_payload.append({
+                        "text": activity_text,
+                        **note_kwargs
+                    })
                 else:
                     # Fallback if no URL available
                     self.crm.log_activity(activity_text, **note_kwargs)
                     crm_activities_created += 1
+                    crm_activities_payload.append({
+                        "text": activity_text,
+                        **note_kwargs
+                    })
 
             # Optional: Create company-level note if primary company exists
             if primary_company_id and analysis and eml_attachment_url:
@@ -492,11 +525,23 @@ class EMLProcessor:
 
                 self.crm.log_activity(company_note, **company_kwargs)
                 crm_activities_created += 1
+                crm_activities_payload.append({
+                    "text": company_note,
+                    **company_kwargs
+                })
 
             # Tasks (only for primary contact)
             if primary_contact_id and analysis and analysis.suggested_tasks:
                 for task in analysis.suggested_tasks:
                     self.crm.create_task(primary_contact_id, task.description, task.due_date, task.priority, status=task.status)
+                    crm_tasks_created += 1
+                    crm_tasks_payload.append({
+                        "contact_id": primary_contact_id,
+                        "description": task.description,
+                        "due_date": task.due_date,
+                        "priority": task.priority,
+                        "status": task.status
+                    })
 
             # Deal
             if analysis and analysis.deal_info and analysis.intent in ["Sales", "Demo"] and primary_company_id:
@@ -509,6 +554,15 @@ class EMLProcessor:
                     analysis.deal_info.stage,
                     **deal_kwargs
                 )
+                crm_deals_created += 1
+                crm_deals_payload.append({
+                    "company_id": primary_company_id,
+                    "contacts": [cid for _, cid in resolved_contacts],
+                    "name": analysis.deal_info.name,
+                    "amount": analysis.deal_info.amount or 0,
+                    "stage": analysis.deal_info.stage,
+                    **deal_kwargs
+                })
 
             # Mark processing as completed successfully
             duration_ms = int((time.time() - start_time) * 1000)
@@ -519,7 +573,14 @@ class EMLProcessor:
                     processing_duration_ms=duration_ms,
                     crm_contacts_created=crm_contacts_created,
                     crm_companies_created=crm_companies_created,
-                    crm_activities_created=crm_activities_created
+                    crm_activities_created=crm_activities_created,
+                    crm_deals_created=crm_deals_created,
+                    crm_tasks_created=crm_tasks_created,
+                    crm_contacts_payload=json.dumps(crm_contacts_payload) if crm_contacts_payload else None,
+                    crm_companies_payload=json.dumps(crm_companies_payload) if crm_companies_payload else None,
+                    crm_activities_payload=json.dumps(crm_activities_payload) if crm_activities_payload else None,
+                    crm_deals_payload=json.dumps(crm_deals_payload) if crm_deals_payload else None,
+                    crm_tasks_payload=json.dumps(crm_tasks_payload) if crm_tasks_payload else None
                 )
 
             logger.info(f"Successfully finished processing for EML.")
