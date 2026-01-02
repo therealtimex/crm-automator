@@ -1431,8 +1431,9 @@ def main_page():
                                                 min=1,
                                                 max=total_pages,
                                                 value=current_page['value'],
-                                                direction_links=True
-                                            ).on('update:model-value', lambda e: handle_page_change(e.value))
+                                                direction_links=True,
+                                                on_change=lambda e: handle_page_change(e.value)
+                                            )
 
                                 else:
                                     # Empty state
