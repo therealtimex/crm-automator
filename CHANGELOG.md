@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.12] - 2026-01-01
+
+### Fixed
+- **Configuration Path Resilience**: Implemented robust path resolution for `.env` files in `ConfigManager` to avoid permission errors in sandbox environments.
+- **Sandbox Protection**: Prevents automatic writing to system directories by falling back to user home or temporary directories for configuration storage.
+- **CLI-UI Integration**: Correctly passed the `--env-file` command-line argument from `eml_automator.py` to the Web UI.
+
 ## [1.9.11] - 2026-01-01
 
 ### Fixed

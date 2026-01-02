@@ -779,8 +779,41 @@ class AnalyticsEngine:
 class ConfigManager:
     """Manages .env file reading/writing with comment preservation"""
 
-    def __init__(self, env_path: str = ".env"):
-        self.env_path = env_path
+    def __init__(self, env_path: str = None):
+        if env_path:
+            self.env_path = env_path
+        else:
+            # Robust strategy for selecting .env path
+            cwd = os.getcwd()
+            home = os.path.expanduser("~")
+            
+            # Paths to avoid for automatic local storage (system folders)
+            SYSTEM_PATHS = ['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/etc', '/var/lib', '/var/www']
+            is_system_cwd = any(cwd.startswith(p) for p in SYSTEM_PATHS) or cwd == '/'
+            
+            cwd_env = os.path.join(cwd, ".env")
+            home_dir = os.path.join(home, ".crm-automator")
+            home_env = os.path.join(home_dir, ".env")
+            
+            # Check if CWD is writable (best effort)
+            is_cwd_writable = os.access(cwd, os.W_OK)
+            
+            if os.path.exists(cwd_env):
+                self.env_path = cwd_env
+            elif is_cwd_writable and not is_system_cwd:
+                self.env_path = cwd_env
+            else:
+                self.env_path = home_env
+
+        # Final safety check: ensure the directory exists and is writable if we want to save
+        env_dir = os.path.dirname(os.path.abspath(self.env_path))
+        try:
+            os.makedirs(env_dir, exist_ok=True)
+        except Exception:
+            # Fallback to temp if home is also not writable
+            import tempfile
+            self.env_path = os.path.join(tempfile.gettempdir(), ".crm-automator.env")
+            logger.warning(f"ConfigManager: Configured path {env_dir} not writable. Falling back to {self.env_path}")
 
     @staticmethod
     def validate_email(email: str) -> bool:
@@ -1799,7 +1832,9 @@ def main_page():
         # ========== CONFIG TAB ==========
         with ui.tab_panel(config_tab):
             with ui.column().classes('w-full p-6 gap-4'):
-                config_manager = ConfigManager()
+                # Try to get custom env_path from storage
+                custom_env = app.storage.user.get('env_path')
+                config_manager = ConfigManager(env_path=custom_env) if custom_env else ConfigManager()
                 current_config = config_manager.load_config()
 
                 # State for form inputs
@@ -2201,21 +2236,26 @@ def main_page():
                 category_select.on('update:model-value', refresh_table)
 
 
-def run_ui(host: str = '127.0.0.1', port: int = 8080, show_browser: bool = False):
+def run_ui(host: str = '127.0.0.1', port: int = 8080, show_browser: bool = False, env_path: str = None):
     """Run the web UI
 
     Args:
         host: Host to bind to (default: 127.0.0.1)
         port: Port to listen on (default: 8080)
         show_browser: Whether to automatically open browser (default: False)
+        env_path: Path to custom .env file
     """
+    if env_path:
+        app.storage.user['env_path'] = env_path
+
     ui.run(
         host=host,
         port=port,
         title='CRM Automator',
         favicon='📧',
         reload=False,
-        show=show_browser
+        show=show_browser,
+        storage_secret='crm-automator-secret' # Required for app.storage.user
     )
 
 

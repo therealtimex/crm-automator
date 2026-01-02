@@ -692,7 +692,7 @@ def main():
         else:
             logger.info(f"Server running at http://127.0.0.1:{args.port}")
             logger.info("Use --browser flag to automatically open browser")
-        run_ui(port=args.port, show_browser=args.browser)
+        run_ui(port=args.port, show_browser=args.browser, env_path=args.env_file)
         return
 
     # Validate eml_path is provided when not using --ui
