@@ -724,7 +724,7 @@ def main():
             base_url=final_llm_url,
             model=final_llm_model
         )
-        persistence = PersistenceLayer()
+        persistence = PersistenceLayer(db_name=args.db_path or "eml_processing.db")
         
         processor = EMLProcessor(client, intelligence, persistence)
         

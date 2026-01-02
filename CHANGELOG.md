@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.10] - 2026-01-01
+
+### Fixed
+- **Sandbox Resilience**: Implemented robust database path resolution in `PersistenceLayer` to avoid `OperationalError` in restricted environments.
+- **System Path Protection**: Added logic to avoid writing to root-level system folders (like `/bin`, `/var/www`, etc.) automatically, falling back to user home or temp directories as needed.
+- **CLI Enhancement**: Ensured `--db-path` argument in `eml_automator.py` is correctly passed to the persistence layer.
+
 ## [1.9.9] - 2026-01-01
 
 ### Fixed

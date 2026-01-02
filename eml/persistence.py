@@ -14,9 +14,51 @@ class PersistenceLayer:
         env_db_path = os.environ.get("PERSISTENCE_DB_PATH")
         if env_db_path:
             self.db_path = env_db_path
+            logger.debug(f"PersistenceLayer: Using database from PERSISTENCE_DB_PATH: {self.db_path}")
         else:
-            # Default to current working directory
-            self.db_path = os.path.join(os.getcwd(), db_name)
+            # Strategy for selecting a writable database path (especially for sandboxed/container environments)
+            # 1. Prefer current working directory if it's NOT a root-level system path and is writable.
+            # 2. Fallback to a user-home hidden folder.
+            # 3. Final fallback to system temp directory (for non-persistent operation if all else fails).
+            
+            cwd = os.getcwd()
+            home = os.path.expanduser("~")
+            
+            # Paths to avoid for automatic local storage (system folders)
+            SYSTEM_PATHS = ['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/etc', '/var/lib', '/var/www']
+            is_system_cwd = any(cwd.startswith(p) for p in SYSTEM_PATHS) or cwd == '/'
+            
+            cwd_db = os.path.join(cwd, db_name)
+            home_dir = os.path.join(home, ".crm-automator")
+            home_db = os.path.join(home_dir, db_name)
+            
+            # Check if CWD is writable (best effort)
+            is_cwd_writable = os.access(cwd, os.W_OK)
+            
+            if os.path.exists(cwd_db):
+                # If DB already exists in CWD, keep using it
+                self.db_path = cwd_db
+            elif is_cwd_writable and not is_system_cwd:
+                # If CWD is writable and not a system path, use it
+                self.db_path = cwd_db
+            else:
+                # Use user home directory
+                self.db_path = home_db
+                
+        # Final safety check: if the selected directory is not writable, fallback to temp
+        db_dir = os.path.dirname(os.path.abspath(self.db_path))
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+            # Check if we can actually write to this directory
+            test_file = os.path.join(db_dir, ".persistence_test")
+            with open(test_file, 'w') as f:
+                f.write('test')
+            os.remove(test_file)
+        except (OSError, IOError):
+            import tempfile
+            self.db_path = os.path.join(tempfile.gettempdir(), db_name)
+            logger.warning(f"PersistenceLayer: Configured path {db_dir} not writable. Falling back to temporary database: {self.db_path}")
+
         self._init_db()
 
     def _init_db(self):
