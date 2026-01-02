@@ -11,6 +11,10 @@ from datetime import datetime
 from typing import List, Dict, Any
 import asyncio
 import threading
+import logging
+import tempfile
+import sqlite3
+from contextlib import contextmanager
 
 from nicegui import ui, app
 from dotenv import load_dotenv
@@ -30,9 +34,25 @@ except ImportError:
     from intelligence import IntelligenceLayer
     from persistence import PersistenceLayer
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Constants
+MAX_FILE_SIZE = 20_000_000  # 20MB
+MAX_UPLOAD_FILES_DISPLAY = 10
+MAX_LOG_LINES = 50
+DEFAULT_LIMIT = 100
+TOP_DOMAINS_LIMIT = 10
+TIMER_INTERVAL = 1.0  # seconds
+HEADER_HEIGHT = 56  # pixels
+
 
 class ProcessingState:
-    """Shared state for processing operations"""
+    """Per-session state for processing operations"""
     def __init__(self):
         self.is_processing = False
         self.current_file = ""
@@ -47,9 +67,23 @@ class ProcessingState:
             "failed": 0
         }
 
+    def cleanup_files(self):
+        """Clean up uploaded temporary files"""
+        for file_path in self.uploaded_files:
+            try:
+                if file_path.exists():
+                    file_path.unlink()
+                    logger.info(f"Cleaned up temporary file: {file_path}")
+            except Exception as e:
+                logger.error(f"Failed to cleanup file {file_path}: {e}")
+        self.uploaded_files.clear()
 
-# Global state
-state = ProcessingState()
+
+def get_state() -> ProcessingState:
+    """Get or create per-session processing state"""
+    if 'processing_state' not in app.storage.user:
+        app.storage.user['processing_state'] = ProcessingState()
+    return app.storage.user['processing_state']
 
 def apply_nexus_theme():
     """Injects Nexus Glass styling overrides."""
@@ -267,61 +301,57 @@ class AnalyticsEngine:
         try:
             return self.db.get_suppression_breakdown()
         except Exception as e:
-            print(f"Error getting suppression breakdown: {e}")
+            logger.error(f"Error getting suppression breakdown: {e}")
             return {}
 
     def get_reason_breakdown(self) -> Dict[str, int]:
         """Get suppression counts by reason using new processing_log table"""
         try:
-            import sqlite3
-            conn = sqlite3.connect(self.db.db_path)
-            cursor = conn.cursor()
+            with sqlite3.connect(self.db.db_path) as conn:
+                cursor = conn.cursor()
 
-            cursor.execute("""
-                SELECT suppression_reason, COUNT(*) as count
-                FROM processing_log
-                WHERE status = 'suppressed' AND suppression_reason IS NOT NULL
-                GROUP BY suppression_reason
-                ORDER BY count DESC
-                LIMIT 10
-            """)
+                cursor.execute("""
+                    SELECT suppression_reason, COUNT(*) as count
+                    FROM processing_log
+                    WHERE status = 'suppressed' AND suppression_reason IS NOT NULL
+                    GROUP BY suppression_reason
+                    ORDER BY count DESC
+                    LIMIT 10
+                """)
 
-            results = {}
-            for row in cursor.fetchall():
-                results[row[0]] = row[1]
+                results = {}
+                for row in cursor.fetchall():
+                    results[row[0]] = row[1]
 
-            conn.close()
-            return results
+                return results
 
         except Exception as e:
-            print(f"Error getting reason breakdown: {e}")
+            logger.error(f"Error getting reason breakdown: {e}")
             return {}
 
-    def get_top_suppressed_domains(self, limit: int = 10) -> Dict[str, int]:
+    def get_top_suppressed_domains(self, limit: int = TOP_DOMAINS_LIMIT) -> Dict[str, int]:
         """Get top suppressed email domains/senders using new processing_log table"""
         try:
-            import sqlite3
-            conn = sqlite3.connect(self.db.db_path)
-            cursor = conn.cursor()
+            with sqlite3.connect(self.db.db_path) as conn:
+                cursor = conn.cursor()
 
-            cursor.execute("""
-                SELECT sender, COUNT(*) as count
-                FROM processing_log
-                WHERE status = 'suppressed' AND sender IS NOT NULL
-                GROUP BY sender
-                ORDER BY count DESC
-                LIMIT ?
-            """, (limit,))
+                cursor.execute("""
+                    SELECT sender, COUNT(*) as count
+                    FROM processing_log
+                    WHERE status = 'suppressed' AND sender IS NOT NULL
+                    GROUP BY sender
+                    ORDER BY count DESC
+                    LIMIT ?
+                """, (limit,))
 
-            results = {}
-            for row in cursor.fetchall():
-                results[row[0]] = row[1]
+                results = {}
+                for row in cursor.fetchall():
+                    results[row[0]] = row[1]
 
-            conn.close()
-            return results
+                return results
 
         except Exception as e:
-            print(f"Error getting top domains: {e}")
+            logger.error(f"Error getting top domains: {e}")
             return {}
 
     def get_timeline_data(self, days: int = 30) -> Dict[str, List]:
@@ -363,7 +393,7 @@ class AnalyticsEngine:
             }
 
         except Exception as e:
-            print(f"Error getting timeline data: {e}")
+            logger.error(f"Error getting timeline data: {e}")
             return {'dates': [], 'processed': [], 'suppressed': []}
 
     def create_processing_pie_chart(self, stats: Dict[str, int]) -> go.Figure:
@@ -641,6 +671,24 @@ class ConfigManager:
     def __init__(self, env_path: str = ".env"):
         self.env_path = env_path
 
+    @staticmethod
+    def validate_email(email: str) -> bool:
+        """Basic email validation"""
+        import re
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return bool(re.match(pattern, email.strip()))
+
+    @staticmethod
+    def validate_domain(domain: str) -> bool:
+        """Basic domain validation (supports @domain.com or domain.com)"""
+        import re
+        domain = domain.strip()
+        # Allow @domain.com or domain.com format
+        if domain.startswith('@'):
+            domain = domain[1:]
+        pattern = r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return bool(re.match(pattern, domain))
+
     def load_config(self) -> Dict[str, str]:
         """Load all config from .env file"""
         config = {}
@@ -666,7 +714,7 @@ class ConfigManager:
             return config
 
         except Exception as e:
-            print(f"Error loading config: {e}")
+            logger.error(f"Error loading config: {e}")
             return {}
 
     def save_config(self, config: Dict[str, str]) -> tuple[bool, str]:
@@ -734,6 +782,32 @@ class ConfigManager:
             if value and not (value.startswith('http://') or value.startswith('https://')):
                 errors.append(f"{field} must be a valid URL (http:// or https://)")
 
+        # Validate email lists
+        email_list_fields = ['INTERNAL_EMAILS', 'ALLOWLIST_DOMAINS', 'SUPPRESS_DOMAINS']
+        for field in email_list_fields:
+            value = config.get(field, '')
+            if value:
+                items = [item.strip() for item in value.split(',') if item.strip()]
+                for item in items:
+                    # Check if it's an email or domain
+                    if '@' in item and not item.startswith('@'):
+                        # Full email address
+                        if not self.validate_email(item):
+                            errors.append(f"Invalid email in {field}: {item}")
+                    else:
+                        # Domain (with or without @)
+                        if not self.validate_domain(item):
+                            errors.append(f"Invalid domain in {field}: {item}")
+
+        # Validate domain lists (INTERNAL_DOMAINS)
+        if config.get('INTERNAL_DOMAINS'):
+            domains = [d.strip() for d in config['INTERNAL_DOMAINS'].split(',') if d.strip()]
+            for domain in domains:
+                if '@' in domain:
+                    errors.append(f"INTERNAL_DOMAINS should not contain @ symbol: {domain}")
+                elif not self.validate_domain(domain):
+                    errors.append(f"Invalid domain in INTERNAL_DOMAINS: {domain}")
+
         return errors
 
     def test_crm_connection(self, api_key: str, base_url: str) -> Dict[str, Any]:
@@ -789,8 +863,7 @@ class ConfigManager:
             }
 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            logger.error(f"LLM connection test failed: {e}", exc_info=True)
             return {
                 'success': False,
                 'message': f'Connection failed: {str(e)}'
@@ -811,11 +884,11 @@ def get_database_stats() -> Dict[str, int]:
             "failed": stats["failed"]
         }
     except Exception as e:
-        print(f"Error getting database stats: {e}")
+        logger.error(f"Error getting database stats: {e}")
         return {"total": 0, "processed": 0, "suppressed": 0, "failed": 0}
 
 
-def get_suppressed_emails(limit: int = 100, category: str = None, search: str = None) -> List[Dict]:
+def get_suppressed_emails(limit: int = DEFAULT_LIMIT, category: str = None, search: str = None) -> List[Dict]:
     """Get suppressed emails from database using new processing_log table"""
     try:
         db = PersistenceLayer()
@@ -830,7 +903,7 @@ def get_suppressed_emails(limit: int = 100, category: str = None, search: str = 
 
         return results
     except Exception as e:
-        print(f"Error getting suppressed emails: {e}")
+        logger.error(f"Error getting suppressed emails: {e}")
         return []
 
 
@@ -840,11 +913,11 @@ def get_suppression_stats() -> Dict[str, Any]:
         db = PersistenceLayer()
         return db.get_suppression_stats()
     except Exception as e:
-        print(f"Error getting suppression stats: {e}")
+        logger.error(f"Error getting suppression stats: {e}")
         return {}
 
 
-async def process_files_async(files: List[Path], force: bool = False, verbose: bool = False):
+async def process_files_async(state: ProcessingState, files: List[Path], force: bool = False, verbose: bool = False):
     """Process uploaded files asynchronously"""
     state.is_processing = True
     state.progress = 0
@@ -902,8 +975,12 @@ async def process_files_async(files: List[Path], force: bool = False, verbose: b
 
     except Exception as e:
         state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ✗ Fatal error: {str(e)}")
+        logger.error(f"Fatal error in process_files_async: {e}", exc_info=True)
 
-    state.is_processing = False
+    finally:
+        state.is_processing = False
+        # Clean up temporary files
+        state.cleanup_files()
 
 
 @ui.page('/')
@@ -985,40 +1062,44 @@ def main_page():
         # ========== UPLOAD TAB ==========
         with ui.tab_panel(upload_tab):
             with ui.column().classes('w-full p-6 gap-4'):
+                # Get state for this session
+                state = get_state()
+
                 # File upload area - Drag & Drop
                 with ui.card().classes('w-full mb-4'):
                     uploaded_files_list = ui.column().classes('w-full')
 
                     async def handle_upload(e):
                         """Handle file upload"""
-                        # Debug: Check for content attribute (files might be rejected if too large)
-                        # Debug: Check for file attribute (files might be rejected if too large)
+                        # Check for file attribute (files might be rejected if too large)
                         if not hasattr(e, 'file'):
-                            print(f"DEBUG: Upload event missing file. Attributes: {dir(e)}")
+                            logger.warning(f"Upload event missing file. Attributes: {dir(e)}")
                             ui.notify(f"File could not be processed (possibly rejected/too large).", type='negative')
                             return
 
                         # e.file is a FileUpload object which contains name, content etc.
                         file_obj = e.file
                         if file_obj.name.endswith('.eml'):
-                            # Save to temp directory
-                            temp_path = Path('/tmp') / file_obj.name
+                            # Save to temp directory (cross-platform)
+                            temp_dir = Path(tempfile.gettempdir())
+                            temp_path = temp_dir / file_obj.name
                             with open(temp_path, 'wb') as f:
                                 # Use async read() method mandated by NiceGUI FileUpload interface
                                 file_data = await file_obj.read()
                                 f.write(file_data)
                             state.uploaded_files.append(temp_path)
+                            logger.info(f"Uploaded file saved to: {temp_path}")
 
                         # Update file list display
                         uploaded_files_list.clear()
                         with uploaded_files_list:
                             ui.label(f'✓ Selected {len(state.uploaded_files)} files').classes('text-positive font-medium mb-3')
-                            for file in state.uploaded_files[:10]:  # Show first 10
+                            for file in state.uploaded_files[:MAX_UPLOAD_FILES_DISPLAY]:
                                 with ui.row().classes('items-center gap-2 p-2 bg-grey-1 rounded'):
                                     ui.icon('description', size='sm').classes('text-primary')
                                     ui.label(file.name).classes('text-sm')
-                            if len(state.uploaded_files) > 10:
-                                ui.label(f'...and {len(state.uploaded_files) - 10} more').classes('text-caption text-gray-400 mt-2')
+                            if len(state.uploaded_files) > MAX_UPLOAD_FILES_DISPLAY:
+                                ui.label(f'...and {len(state.uploaded_files) - MAX_UPLOAD_FILES_DISPLAY} more').classes('text-caption text-gray-400 mt-2')
 
                     # Drag & drop upload area
                     with ui.column().classes('w-full items-center justify-center p-12 cursor-pointer border-2 border-dashed border-white/20 rounded-xl bg-white/5 hover:bg-white/10 transition-colors'):
@@ -1031,7 +1112,7 @@ def main_page():
                             multiple=True,
                             auto_upload=True,
                             label='Choose Files',
-                            max_file_size=20_000_000  # 20MB limit
+                            max_file_size=MAX_FILE_SIZE
                         ).props('accept=.eml color=primary flat').classes('w-full max-w-xs')
 
                 # Processing options
@@ -1054,6 +1135,7 @@ def main_page():
 
                         ui.notify('Starting processing...', type='info')
                         await process_files_async(
+                            state,
                             state.uploaded_files,
                             force=force_checkbox.value,
                             verbose=verbose_checkbox.value
@@ -1066,8 +1148,8 @@ def main_page():
 
                     def clear_all_files():
                         state.uploaded_files.clear()
-                        uploaded_files_list.clear() # Clear the visual list
-                        upload_element.reset()      # Reset the upload component
+                        uploaded_files_list.clear()  # Clear the visual list
+                        upload_element.reset()       # Reset the upload component
 
                     with ui.button('Clear Files',
                              on_click=clear_all_files,
@@ -1092,14 +1174,15 @@ def main_page():
                     ui.label('LIVE LOGS').classes('text-xs font-bold text-gray-400 uppercase tracking-wider mb-2')
                     log_container = ui.column().classes('w-full bg-gray-900 p-4 rounded font-mono text-xs text-gray-300').style('max-height: 400px; overflow-y: auto')
 
-                    # Auto-update logs
+                    # Auto-update logs (only when processing)
                     def update_logs():
                         log_container.clear()
                         with log_container:
-                            for log in state.logs[-50:]:  # Show last 50 logs
+                            for log in state.logs[-MAX_LOG_LINES:]:  # Show last N logs
                                 ui.label(log).classes('font-mono text-sm')
 
-                    ui.timer(1.0, update_logs)
+                    # Timer only active when processing
+                    ui.timer(TIMER_INTERVAL, update_logs, active=lambda: state.is_processing)
 
         # ========== ANALYTICS TAB ==========
         with ui.tab_panel(analytics_tab):
@@ -1504,7 +1587,6 @@ def main_page():
                                     # Fallback (unlikely given typical NiceGUI versions > 1.4)
                                     raise Exception("Event has no 'file' attribute")
 
-                                count = 0
                                 count = 0
                                 for line in content.splitlines():
                                     line = line.strip()
