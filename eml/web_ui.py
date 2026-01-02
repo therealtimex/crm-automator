@@ -127,6 +127,11 @@ def apply_nexus_theme():
             .body--dark .text-branding { color: rgba(255, 255, 255, 0.9) !important; }
             .body--light .text-branding { color: #1f2937 !important; }
 
+            .desktop-only { display: none; }
+            @media (min-width: 768px) {
+                .desktop-only { display: block !important; }
+            }
+
             /* Hide tab labels on mobile for cleaner look */
             @media (max-width: 767px) {
                 .q-tab__label {
@@ -238,7 +243,7 @@ def create_header_with_tabs(dark_mode_handler, active_tab_name: str = 'dashboard
                     </svg>
                 ''', sanitize=False).classes('flex-shrink-0')
                 # App name (hidden on mobile, visible on medium+ screens)
-                ui.label('CRM AUTOMATOR').classes('hidden md:block text-sm font-bold tracking-wide text-branding')
+                ui.label('CRM AUTOMATOR').classes('desktop-only text-sm font-bold tracking-wide text-branding')
                 # Separator visible only on mobile when text is hidden
                 ui.element('div').classes('w-[1px] h-6 bg-white/10 mx-1 md:hidden')
 
@@ -264,7 +269,7 @@ def create_header_with_tabs(dark_mode_handler, active_tab_name: str = 'dashboard
                  # System Status (icon-only on mobile, full text on desktop)
                  with ui.row().classes('items-center gap-2'):
                      ui.element('div').classes('w-2 h-2 rounded-full bg-green-500 animate-pulse')
-                     ui.label('SYSTEM ONLINE').classes('hidden md:block text-[10px] font-bold text-green-500 tracking-wider')
+                     ui.label('SYSTEM ONLINE').classes('desktop-only text-[10px] font-bold text-green-500 tracking-wider')
 
     return tabs, dashboard_tab, upload_tab, analytics_tab, suppressed_tab, config_tab
 
