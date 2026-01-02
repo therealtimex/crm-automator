@@ -757,6 +757,14 @@ def main():
         logger.info(f"Failed: {stats['failed']}")
         logger.info("--------------------------")
 
+        # Show LLM classification statistics
+        llm_stats = processor.filter_orchestrator.get_llm_stats()
+        if llm_stats:
+            logger.info("")
+            logger.info("--- LLM Classification Stats ---")
+            logger.info(llm_stats)
+            logger.info("--------------------------")
+
         # Show filter statistics if requested
         if args.show_filter_stats:
             try:

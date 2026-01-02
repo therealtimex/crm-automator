@@ -12,6 +12,7 @@ from .categories import EmailCategory, FilterDecision
 from .heuristic_filter import HeuristicFilter
 from .eesa_filter import EESAHeaderFilter
 from .llm_classifier import LLMEmailClassifier
+from .llm_config import create_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +62,22 @@ class EmailFilterOrchestrator:
         # Initialize LLM classifier if needed
         self.llm_classifier: Optional[LLMEmailClassifier] = None
         if self.classification_strategy in ["llm", "hybrid"]:
-            if llm_client:
+            # Use provided client or create one from environment config
+            final_client = llm_client
+            if not final_client:
+                logger.info("No LLM client provided, attempting to create from environment config")
+                final_client = create_llm_client()
+
+            if final_client:
                 model = llm_model or os.environ.get("CLASSIFICATION_MODEL", "gpt-4o-mini")
-                self.llm_classifier = LLMEmailClassifier(llm_client, model)
+                self.llm_classifier = LLMEmailClassifier(final_client, model)
+
+                # Run health check
+                if not self.llm_classifier.check_health():
+                    logger.warning("LLM health check failed, but will retry on first classification")
             else:
                 logger.warning(
-                    "LLM classification requested but no client provided. "
+                    "LLM classification requested but no client available. "
                     "Falling back to heuristics only."
                 )
                 self.classification_strategy = "heuristic"
@@ -209,3 +220,9 @@ class EmailFilterOrchestrator:
         if not value:
             return []
         return [item.strip().lower() for item in value.split(",") if item.strip()]
+
+    def get_llm_stats(self) -> str:
+        """Get LLM classification statistics summary."""
+        if self.llm_classifier:
+            return self.llm_classifier.get_stats()
+        return ""
