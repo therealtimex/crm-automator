@@ -123,6 +123,21 @@ def apply_nexus_theme():
                 box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
             }
             
+            /* --- Responsive Header & Branding --- */
+            .body--dark .text-branding { color: rgba(255, 255, 255, 0.9) !important; }
+            .body--light .text-branding { color: #1f2937 !important; }
+
+            /* Hide tab labels on mobile for cleaner look */
+            @media (max-width: 767px) {
+                .q-tab__label {
+                    display: none;
+                }
+                .q-tab {
+                    min-width: 48px !important;
+                    padding: 0 8px !important;
+                }
+            }
+            
             /* --- Quasar Component Cleanups --- */
             .q-table, .q-table__card { background: transparent !important; }
             .q-tab__indicator { height: 3px !important; border-radius: 3px 3px 0 0; }
@@ -131,6 +146,25 @@ def apply_nexus_theme():
             /* --- Upload Component Fix --- */
             .q-uploader__list:not(:has(.q-uploader__file)) {
                 display: none !important;
+            }
+
+            /* --- Responsive Design: Mobile --- */
+            @media (max-width: 767px) {
+                /* Hide tab labels on mobile, show icons only */
+                .q-tab__label {
+                    display: none !important;
+                }
+
+                /* Reduce header padding on mobile */
+                .q-header .q-toolbar {
+                    padding-left: 1rem !important;
+                    padding-right: 1rem !important;
+                }
+
+                /* Reduce gap between tabs */
+                .q-tabs {
+                    gap: 0 !important;
+                }
             }
         </style>
     ''')
@@ -174,12 +208,12 @@ def create_header_with_tabs(dark_mode_handler, active_tab_name: str = 'dashboard
     """Create header with top tabs navigation (Nexus Glass style)"""
     # Header container (p-0 to allow full control by inner row)
     with ui.header().classes('p-0'):
-        # Inner row with fixed height and padding (matches reference)
-        with ui.row().classes('w-full items-center justify-between px-6 h-14'):
+        # Inner row with fixed height and responsive padding
+        with ui.row().classes('w-full items-center justify-between px-3 md:px-6 h-14'):
             
-            # Left: App branding
-            with ui.row().classes('items-center gap-3'):
-                # Inline SVG logo
+            # Left: App branding (responsive: icon-only on mobile)
+            with ui.row().classes('items-center gap-2 md:gap-3'):
+                # Inline SVG logo (always visible)
                 ui.html('''
                     <svg width="32" height="32" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
                       <defs>
@@ -203,7 +237,10 @@ def create_header_with_tabs(dark_mode_handler, active_tab_name: str = 'dashboard
                       </g>
                     </svg>
                 ''', sanitize=False).classes('flex-shrink-0')
-                ui.label('CRM AUTOMATOR').classes('text-sm font-bold tracking-wide dark:text-white text-gray-800')
+                # App name (hidden on mobile, visible on medium+ screens)
+                ui.label('CRM AUTOMATOR').classes('hidden md:block text-sm font-bold tracking-wide text-branding')
+                # Separator visible only on mobile when text is hidden
+                ui.element('div').classes('w-[1px] h-6 bg-white/10 mx-1 md:hidden')
 
             # Center: Tabs (Self-stretch to fill height)
             with ui.tabs().classes('bg-transparent self-stretch text-gray-400') \
@@ -214,8 +251,8 @@ def create_header_with_tabs(dark_mode_handler, active_tab_name: str = 'dashboard
                 suppressed_tab = ui.tab('Suppressed', icon='filter_list')
                 config_tab = ui.tab('Configuration', icon='settings')
 
-            # Right: System Status & Theme Toggle
-            with ui.row().classes('items-center gap-6'):
+            # Right: System Status & Theme Toggle (responsive)
+            with ui.row().classes('items-center gap-2 md:gap-6'):
                  # Theme Switcher (Icon with Menu)
                  with ui.button(icon='brightness_6').props('flat round dense text-color=grey-5'):
                      ui.tooltip('Change Theme')
@@ -224,10 +261,10 @@ def create_header_with_tabs(dark_mode_handler, active_tab_name: str = 'dashboard
                          ui.menu_item('Dark', on_click=lambda: dark_mode_handler.enable()).classes('hover:bg-gray-700')
                          ui.menu_item('System', on_click=lambda: dark_mode_handler.auto()).classes('hover:bg-gray-700')
 
-                 # System Status
+                 # System Status (icon-only on mobile, full text on desktop)
                  with ui.row().classes('items-center gap-2'):
                      ui.element('div').classes('w-2 h-2 rounded-full bg-green-500 animate-pulse')
-                     ui.label('SYSTEM ONLINE').classes('text-[10px] font-bold text-green-500 tracking-wider')
+                     ui.label('SYSTEM ONLINE').classes('hidden md:block text-[10px] font-bold text-green-500 tracking-wider')
 
     return tabs, dashboard_tab, upload_tab, analytics_tab, suppressed_tab, config_tab
 
