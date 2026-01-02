@@ -52,7 +52,7 @@ HEADER_HEIGHT = 56  # pixels
 
 
 class ProcessingState:
-    """Per-session state for processing operations"""
+    """Global state for processing operations (single-user localhost app)"""
     def __init__(self):
         self.is_processing = False
         self.current_file = ""
@@ -79,11 +79,8 @@ class ProcessingState:
         self.uploaded_files.clear()
 
 
-def get_state() -> ProcessingState:
-    """Get or create per-session processing state"""
-    if 'processing_state' not in app.storage.user:
-        app.storage.user['processing_state'] = ProcessingState()
-    return app.storage.user['processing_state']
+# Global state (acceptable for localhost-only app)
+state = ProcessingState()
 
 def apply_nexus_theme():
     """Injects Nexus Glass styling overrides."""
@@ -837,22 +834,33 @@ class ConfigManager:
             }
 
     def test_llm_connection(self, api_key: str, base_url: str, model: str) -> Dict[str, Any]:
-        """Test LLM API connectivity"""
+        """Test LLM API connectivity with detailed diagnostics"""
         try:
-            from openai import OpenAI
-
+            from openai import OpenAI, APIConnectionError, AuthenticationError, APIStatusError
+            
             if not base_url or not model:
                 return {
                     'success': False,
                     'message': 'Base URL and model are required'
                 }
 
-            client = OpenAI(api_key=api_key or "not-needed", base_url=base_url)
+            # Ensure base_url is a full URL
+            if not base_url.startswith(('http://', 'https://')):
+                return {
+                    'success': False,
+                    'message': 'Base URL must start with http:// or https://'
+                }
+
+            client = OpenAI(
+                api_key=api_key or "not-needed", 
+                base_url=base_url,
+                timeout=15.0 # Local models might be slow to respond initially
+            )
 
             # Try a simple completion
             response = client.chat.completions.create(
                 model=model,
-                messages=[{"role": "user", "content": "test"}],
+                messages=[{"role": "user", "content": "Hello"}],
                 max_tokens=5
             )
 
@@ -862,11 +870,29 @@ class ConfigManager:
                 'model': model
             }
 
-        except Exception as e:
-            logger.error(f"LLM connection test failed: {e}", exc_info=True)
+        except APIConnectionError as e:
+            logger.error(f"LLM connection test failed (Connection): {e}")
             return {
                 'success': False,
-                'message': f'Connection failed: {str(e)}'
+                'message': f'Connection Error: Could not reach {base_url}. Ensure the server is running and accessible. (Detail: {str(e)})'
+            }
+        except AuthenticationError as e:
+            logger.error(f"LLM connection test failed (Auth): {e}")
+            return {
+                'success': False,
+                'message': f'Authentication Error: Check your API key. (Detail: {str(e)})'
+            }
+        except APIStatusError as e:
+            logger.error(f"LLM connection test failed (Status): {e}")
+            return {
+                'success': False,
+                'message': f'API Error: {e.status_code} - {e.message}'
+            }
+        except Exception as e:
+            logger.error(f"LLM connection test failed (General): {e}", exc_info=True)
+            return {
+                'success': False,
+                'message': f'Error: {str(e)}'
             }
 
 
@@ -917,7 +943,7 @@ def get_suppression_stats() -> Dict[str, Any]:
         return {}
 
 
-async def process_files_async(state: ProcessingState, files: List[Path], force: bool = False, verbose: bool = False):
+async def process_files_async(files: List[Path], force: bool = False, verbose: bool = False):
     """Process uploaded files asynchronously"""
     state.is_processing = True
     state.progress = 0
@@ -1062,9 +1088,6 @@ def main_page():
         # ========== UPLOAD TAB ==========
         with ui.tab_panel(upload_tab):
             with ui.column().classes('w-full p-6 gap-4'):
-                # Get state for this session
-                state = get_state()
-
                 # File upload area - Drag & Drop
                 with ui.card().classes('w-full mb-4'):
                     uploaded_files_list = ui.column().classes('w-full')
@@ -1135,7 +1158,6 @@ def main_page():
 
                         ui.notify('Starting processing...', type='info')
                         await process_files_async(
-                            state,
                             state.uploaded_files,
                             force=force_checkbox.value,
                             verbose=verbose_checkbox.value
