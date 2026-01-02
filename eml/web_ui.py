@@ -1047,10 +1047,9 @@ async def process_files_async(files: List[Path], force: bool = False, verbose: b
             try:
                 # Process in a thread to avoid blocking
                 result = await asyncio.to_thread(
-                    processor.process_email_file,
+                    processor.process,
                     str(file_path),
-                    force=force,
-                    verbose=verbose
+                    force=force
                 )
 
                 if result:

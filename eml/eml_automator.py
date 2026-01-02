@@ -163,7 +163,7 @@ class EMLProcessor:
                 duration_ms = int((time.time() - start_time) * 1000)
                 if log_id:
                     self.db.complete_processing(log_id, status='skipped', processing_duration_ms=duration_ms)
-                return
+                return True  # Already processed counts as success
 
             # === EMAIL FILTERING: Check if email should be processed ===
             # Re-parse for filtering (need Message object for filters)
@@ -196,7 +196,7 @@ class EMLProcessor:
                         suppression_category=decision.category.value if decision.category else None,
                         suppression_reason=decision.reason
                     )
-                return
+                return True  # Suppression is successful processing
 
             logger.info(f"✓ Processing: {Path(file_path).name} (reason: {decision.reason})")
 
@@ -377,15 +377,24 @@ class EMLProcessor:
                 # Complete processing with success but note the warning
                 duration_ms = int((time.time() - start_time) * 1000)
                 if log_id:
+                    # Convert analysis to dict for database storage
+                    ai_summary_dict = None
+                    if analysis:
+                        try:
+                            ai_summary_dict = analysis.dict() if hasattr(analysis, 'dict') else analysis.model_dump()
+                        except Exception as e:
+                            logger.warning(f"Failed to serialize AI analysis: {e}")
+
                     self.db.complete_processing(
                         log_id,
                         status='success',
                         processing_duration_ms=duration_ms,
                         crm_contacts_created=crm_contacts_created,
                         crm_companies_created=crm_companies_created,
-                        crm_activities_created=crm_activities_created
+                        crm_activities_created=crm_activities_created,
+                        ai_summary=ai_summary_dict
                     )
-                return
+                return True  # Return True instead of None
 
             # primary contact selection
             primary_contact_id = None
@@ -575,6 +584,14 @@ class EMLProcessor:
             # Mark processing as completed successfully
             duration_ms = int((time.time() - start_time) * 1000)
             if log_id:
+                # Convert analysis to dict for database storage
+                ai_summary_dict = None
+                if analysis:
+                    try:
+                        ai_summary_dict = analysis.dict() if hasattr(analysis, 'dict') else analysis.model_dump()
+                    except Exception as e:
+                        logger.warning(f"Failed to serialize AI analysis: {e}")
+
                 self.db.complete_processing(
                     log_id,
                     status='success',
@@ -588,10 +605,12 @@ class EMLProcessor:
                     crm_companies_payload=json.dumps(crm_companies_payload) if crm_companies_payload else None,
                     crm_activities_payload=json.dumps(crm_activities_payload) if crm_activities_payload else None,
                     crm_deals_payload=json.dumps(crm_deals_payload) if crm_deals_payload else None,
-                    crm_tasks_payload=json.dumps(crm_tasks_payload) if crm_tasks_payload else None
+                    crm_tasks_payload=json.dumps(crm_tasks_payload) if crm_tasks_payload else None,
+                    ai_summary=ai_summary_dict
                 )
 
             logger.info(f"Successfully finished processing for EML.")
+            return True  # Processing successful
 
         except Exception as e:
             # Log the error with full traceback
