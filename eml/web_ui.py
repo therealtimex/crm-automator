@@ -82,6 +82,42 @@ class ProcessingState:
 # Global state (acceptable for localhost-only app)
 state = ProcessingState()
 
+
+class WebUILogHandler(logging.Handler):
+    """Custom logging handler that captures logs and adds them to state.logs"""
+    def __init__(self, state_obj):
+        super().__init__()
+        self.state = state_obj
+        # Set formatter to match the desired format
+        self.setFormatter(logging.Formatter('%(levelname)s - %(name)s - %(message)s'))
+
+    def emit(self, record):
+        try:
+            # Format the log message
+            log_msg = self.format(record)
+            timestamp = datetime.now().strftime('%H:%M:%S')
+
+            # Add emoji based on log level
+            level_emoji = {
+                'DEBUG': '🔍',
+                'INFO': 'ℹ️',
+                'WARNING': '⚠️',
+                'ERROR': '❌',
+                'CRITICAL': '🚨'
+            }
+            emoji = level_emoji.get(record.levelname, '•')
+
+            # Append to state logs
+            formatted_log = f"[{timestamp}] {emoji} {log_msg}"
+            self.state.logs.append(formatted_log)
+
+            # Keep only last 200 logs to prevent memory issues
+            if len(self.state.logs) > 200:
+                self.state.logs = self.state.logs[-200:]
+        except Exception:
+            # Don't let logging errors break the handler
+            pass
+
 def apply_nexus_theme():
     """Injects Nexus Glass styling overrides."""
     ui.add_head_html('''
@@ -1022,10 +1058,20 @@ async def process_files_async(files: List[Path], force: bool = False, verbose: b
     state.total = len(files)
     state.logs = []
 
+    # Set up custom log handler to capture logs in real-time
+    web_handler = WebUILogHandler(state)
+    web_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
+
+    # Add handler to root logger to capture all logs
+    root_logger = logging.getLogger()
+    root_logger.addHandler(web_handler)
+
     # Initialize components
     load_dotenv()
 
     try:
+        state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] 🚀 Initializing CRM Automator...")
+
         crm_client = RealTimeXClient(
             api_key=os.getenv("CRM_API_KEY"),
             base_url=os.getenv("CRM_API_BASE_URL")
@@ -1038,11 +1084,13 @@ async def process_files_async(files: List[Path], force: bool = False, verbose: b
         state.stats["suppressed"] = 0
         state.stats["failed"] = 0
 
+        state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Initialized. Processing {len(files)} file(s)...")
+
         for idx, file_path in enumerate(files):
             state.current_file = file_path.name
             state.progress = idx
 
-            state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Processing {file_path.name}...")
+            state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] 📧 Processing {file_path.name}...")
 
             try:
                 # Process in a thread to avoid blocking
@@ -1054,27 +1102,31 @@ async def process_files_async(files: List[Path], force: bool = False, verbose: b
 
                 if result:
                     state.stats["processed"] += 1
-                    state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ✓ Processed {file_path.name}")
+                    state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Processed {file_path.name}")
                 else:
                     state.stats["suppressed"] += 1
                     state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ⊘ Suppressed {file_path.name}")
 
             except Exception as e:
                 state.stats["failed"] += 1
-                state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ✗ Error: {file_path.name} - {str(e)}")
+                state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Error: {file_path.name} - {str(e)}")
 
             await asyncio.sleep(0.1)  # Allow UI updates
 
         state.progress = state.total
         state.current_file = "Complete"
-        state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ✓ Processing complete!")
-        state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Processed: {state.stats['processed']}, Suppressed: {state.stats['suppressed']}, Failed: {state.stats['failed']}")
+        state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] 🎉 Processing complete!")
+        state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Processed: {state.stats['processed']}, Suppressed: {state.stats['suppressed']}, Failed: {state.stats['failed']}")
 
     except Exception as e:
-        state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ✗ Fatal error: {str(e)}")
+        state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] 🚨 Fatal error: {str(e)}")
         logger.error(f"Fatal error in process_files_async: {e}", exc_info=True)
 
     finally:
+        # Remove the log handler to prevent memory leaks
+        root_logger.removeHandler(web_handler)
+        web_handler.close()
+
         state.is_processing = False
         # Clean up temporary files
         state.cleanup_files()
@@ -1323,13 +1375,44 @@ def main_page():
 
                 # Recent Activity - Full width with search and pagination
                 with ui.card().classes('w-full p-0 gap-0'):
+                    # State for auto-refresh
+                    auto_refresh_enabled = {'value': True}
+                    last_refresh_time = {'value': datetime.now()}
+
                     # Header with title and controls
                     with ui.row().classes('p-4 border-b border-white/10 items-center justify-between'):
                         ui.label('RECENT ACTIVITY').classes('text-sm font-bold tracking-wide text-white')
 
+                        # Auto-refresh controls
+                        with ui.row().classes('gap-2 items-center'):
+                            # Last refresh indicator
+                            refresh_indicator = ui.label().classes('text-xs text-gray-500')
+
+                            def update_refresh_indicator():
+                                if auto_refresh_enabled['value']:
+                                    elapsed = (datetime.now() - last_refresh_time['value']).seconds
+                                    refresh_indicator.text = f'Updated {elapsed}s ago'
+                                else:
+                                    refresh_indicator.text = 'Auto-refresh disabled'
+
+                            # Update indicator every second
+                            ui.timer(1.0, update_refresh_indicator)
+
+                            # Auto-refresh toggle
+                            def toggle_auto_refresh(e):
+                                auto_refresh_enabled['value'] = e.value
+                                if e.value:
+                                    # Immediately refresh when enabled
+                                    load_activity(current_page['value'], search_input.value or '')
+
+                            ui.switch(value=True, on_change=toggle_auto_refresh) \
+                                .props('dense color=primary') \
+                                .classes('ml-2') \
+                                .tooltip('Toggle auto-refresh (5s interval)')
+
                     # Search and filters
                     with ui.row().classes('px-4 py-3 gap-2 border-b border-white/10'):
-                        search_input = ui.input('Search emails...', 
+                        search_input = ui.input('Search emails...',
                                               on_change=lambda: handle_search()) \
                                       .props('outlined dense debounce="500" clearable') \
                                       .classes('flex-1')
@@ -1342,6 +1425,9 @@ def main_page():
                     def load_activity(page: int = 1, search_query: str = ''):
                         """Load activity with pagination and search"""
                         activity_container.clear()
+
+                        # Update last refresh time
+                        last_refresh_time['value'] = datetime.now()
 
                         try:
                             db = PersistenceLayer()
@@ -1466,6 +1552,14 @@ def main_page():
 
                     # Initial load
                     load_activity()
+
+                    # Auto-refresh timer (5 second interval)
+                    def auto_refresh():
+                        """Automatically refresh activity if enabled"""
+                        if auto_refresh_enabled['value']:
+                            load_activity(current_page['value'], search_input.value or '')
+
+                    ui.timer(5.0, auto_refresh)
 
         # ========== UPLOAD TAB ==========
         with ui.tab_panel(upload_tab):
