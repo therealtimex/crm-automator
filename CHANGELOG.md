@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.5] - 2026-01-01
+
+### Fixed
+- **UI Layout**: Fixed Email Detail Modal layout issues where tabs and content were hidden due to global CSS conflicts (added `!h-12` and `min-h-0`).
+- **UI Alignment**: Fixed alignment of "No data" placeholders in AI Analysis, CRM Integration, and Error Details tabs to be centered.
+- **Search**: Fixed "Recent Activity" search by adding live search (debounced) and restoring Enter key functionality.
+- **Pagination**: Fixed pagination event handling in "Recent Activity" table by using `on_change` listener.
+- **Graceful Exit**: Added `KeyboardInterrupt` handling to `eml_automator.py` and `web_ui.py` for a clean "Bye!" message on Ctrl+C.
+- **Serialization Error**: Fixed `TypeError: Object of type bytes is not JSON serializable` by sanitizing binary content from `crm_activities_payload` logs.
+
 ## [1.9.4] - 2025-12-31
 
 ### Added
