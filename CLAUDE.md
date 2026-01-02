@@ -45,8 +45,14 @@ uv run python eml/eml_automator.py "path/to/directory" --env-file ".env" --show-
 # Launch web interface (localhost only, no authentication)
 uv run python eml/eml_automator.py --ui
 
+# Launch and automatically open browser
+uv run python eml/eml_automator.py --ui --browser
+
 # Launch on custom port
 uv run python eml/eml_automator.py --ui --port 8081
+
+# Launch on custom port and open browser
+uv run python eml/eml_automator.py --ui --port 8081 --browser
 
 # Access at: http://127.0.0.1:8080
 ```

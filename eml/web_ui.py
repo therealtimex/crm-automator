@@ -1795,15 +1795,21 @@ def main_page():
                 category_select.on('update:model-value', refresh_table)
 
 
-def run_ui(host: str = '127.0.0.1', port: int = 8080):
-    """Run the web UI"""
+def run_ui(host: str = '127.0.0.1', port: int = 8080, show_browser: bool = False):
+    """Run the web UI
+
+    Args:
+        host: Host to bind to (default: 127.0.0.1)
+        port: Port to listen on (default: 8080)
+        show_browser: Whether to automatically open browser (default: False)
+    """
     ui.run(
         host=host,
         port=port,
         title='CRM Automator',
         favicon='📧',
         reload=False,
-        show=True
+        show=show_browser
     )
 
 

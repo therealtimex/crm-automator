@@ -571,6 +571,7 @@ def main():
     parser.add_argument("--show-filter-stats", action="store_true", help="Show email filtering statistics after processing")
     parser.add_argument("--ui", action="store_true", help="Launch web UI (localhost only, no authentication)")
     parser.add_argument("--port", type=int, default=8080, help="Port for web UI (default: 8080)")
+    parser.add_argument("--browser", action="store_true", help="Automatically open browser when launching UI")
 
     args = parser.parse_args()
 
@@ -582,8 +583,12 @@ def main():
             from eml.web_ui import run_ui
 
         logger.info("Launching web UI...")
-        logger.info(f"Opening browser at http://127.0.0.1:{args.port}")
-        run_ui(port=args.port)
+        if args.browser:
+            logger.info(f"Opening browser at http://127.0.0.1:{args.port}")
+        else:
+            logger.info(f"Server running at http://127.0.0.1:{args.port}")
+            logger.info("Use --browser flag to automatically open browser")
+        run_ui(port=args.port, show_browser=args.browser)
         return
 
     # Validate eml_path is provided when not using --ui
