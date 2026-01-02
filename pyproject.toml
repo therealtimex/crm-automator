@@ -1,6 +1,6 @@
 [project]
 name = "crm-automator"
-version = "1.9.8"
+version = "1.9.9"
 description = "AI-powered email processing and CRM automation"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -33,5 +33,5 @@ crm-automator = "eml.eml_automator:main"
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["eml"]
+[tool.setuptools.packages.find]
+include = ["eml*"]

@@ -35,12 +35,9 @@ def log_suppressed_email(
     # Get or create persistence layer
     if persistence_layer is None:
         try:
-            from ..persistence import PersistenceLayer
-        except (ImportError, ValueError):
-            try:
-                from eml.persistence import PersistenceLayer
-            except ImportError:
-                from persistence import PersistenceLayer
+            from eml.persistence import PersistenceLayer
+        except ImportError:
+            from persistence import PersistenceLayer
         persistence_layer = PersistenceLayer()
 
     # Log to database
@@ -74,12 +71,9 @@ def get_suppression_stats(persistence_layer=None) -> dict:
     # Get or create persistence layer
     if persistence_layer is None:
         try:
-            from ..persistence import PersistenceLayer
-        except (ImportError, ValueError):
-            try:
-                from eml.persistence import PersistenceLayer
-            except ImportError:
-                from persistence import PersistenceLayer
+            from eml.persistence import PersistenceLayer
+        except ImportError:
+            from persistence import PersistenceLayer
         persistence_layer = PersistenceLayer()
 
     try:
@@ -152,12 +146,9 @@ def get_suppressed_emails(
     # Get or create persistence layer
     if persistence_layer is None:
         try:
-            from ..persistence import PersistenceLayer
-        except (ImportError, ValueError):
-            try:
-                from eml.persistence import PersistenceLayer
-            except ImportError:
-                from persistence import PersistenceLayer
+            from eml.persistence import PersistenceLayer
+        except ImportError:
+            from persistence import PersistenceLayer
         persistence_layer = PersistenceLayer()
 
     try:
@@ -186,12 +177,9 @@ def clear_old_suppressed_emails(days: int = 30, persistence_layer=None) -> int:
     # Get or create persistence layer
     if persistence_layer is None:
         try:
-            from ..persistence import PersistenceLayer
-        except (ImportError, ValueError):
-            try:
-                from eml.persistence import PersistenceLayer
-            except ImportError:
-                from persistence import PersistenceLayer
+            from eml.persistence import PersistenceLayer
+        except ImportError:
+            from persistence import PersistenceLayer
         persistence_layer = PersistenceLayer()
 
     try:

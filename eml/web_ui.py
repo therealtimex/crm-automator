@@ -23,28 +23,22 @@ import plotly.express as px
 
 # Import CRM Automator components
 try:
-    from .eml_automator import EMLProcessor
-    from .crm_client import RealTimeXClient
-    from .intelligence import IntelligenceLayer
-    from .persistence import PersistenceLayer
-except (ImportError, ValueError):
+    from eml.eml_automator import EMLProcessor
+    from eml.crm_client import RealTimeXClient
+    from eml.intelligence import IntelligenceLayer
+    from eml.persistence import PersistenceLayer
+except ImportError:
     try:
-        from eml.eml_automator import EMLProcessor
-        from eml.crm_client import RealTimeXClient
-        from eml.intelligence import IntelligenceLayer
-        from eml.persistence import PersistenceLayer
+        from eml_automator import EMLProcessor
+        from crm_client import RealTimeXClient
+        from intelligence import IntelligenceLayer
+        from persistence import PersistenceLayer
     except ImportError:
-        try:
-            from eml_automator import EMLProcessor
-            from crm_client import RealTimeXClient
-            from intelligence import IntelligenceLayer
-            from persistence import PersistenceLayer
-        except ImportError:
-            sys.path.insert(0, os.path.dirname(__file__))
-            from eml_automator import EMLProcessor
-            from crm_client import RealTimeXClient
-            from intelligence import IntelligenceLayer
-            from persistence import PersistenceLayer
+        sys.path.insert(0, os.path.dirname(__file__))
+        from eml_automator import EMLProcessor
+        from crm_client import RealTimeXClient
+        from intelligence import IntelligenceLayer
+        from persistence import PersistenceLayer
 
 # Configure logging
 logging.basicConfig(
