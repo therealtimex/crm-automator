@@ -8,12 +8,18 @@ import openai
 
 # Import content cleaner for optimization
 try:
-    from filters.content_cleaner import ContentCleaner
-except ImportError:
-    # Fallback if running from different context
-    import sys
-    sys.path.insert(0, os.path.dirname(__file__))
-    from filters.content_cleaner import ContentCleaner
+    from .filters.content_cleaner import ContentCleaner
+except (ImportError, ValueError):
+    try:
+        from eml.filters.content_cleaner import ContentCleaner
+    except ImportError:
+        try:
+            from filters.content_cleaner import ContentCleaner
+        except ImportError:
+            # Fallback if running from different context
+            import sys
+            sys.path.insert(0, os.path.dirname(__file__))
+            from filters.content_cleaner import ContentCleaner
 
 logger = logging.getLogger(__name__)
 

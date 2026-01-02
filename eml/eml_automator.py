@@ -28,15 +28,33 @@ from email_reply_parser import EmailReplyParser
 from bs4 import BeautifulSoup
 
 try:
-    from crm_client import RealTimeXClient
-    from intelligence import IntelligenceLayer, AnalysisResult
-    from persistence import PersistenceLayer
-    from filters import EmailFilterOrchestrator, log_suppressed_email
-except ImportError:
-    from eml.crm_client import RealTimeXClient
-    from eml.intelligence import IntelligenceLayer, AnalysisResult
-    from eml.persistence import PersistenceLayer
-    from eml.filters import EmailFilterOrchestrator, log_suppressed_email
+    # Try relative imports first (for package mode)
+    from .crm_client import RealTimeXClient
+    from .intelligence import IntelligenceLayer, AnalysisResult
+    from .persistence import PersistenceLayer
+    from .filters import EmailFilterOrchestrator, log_suppressed_email
+except (ImportError, ValueError):
+    try:
+        # Try absolute package imports
+        from eml.crm_client import RealTimeXClient
+        from eml.intelligence import IntelligenceLayer, AnalysisResult
+        from eml.persistence import PersistenceLayer
+        from eml.filters import EmailFilterOrchestrator, log_suppressed_email
+    except ImportError:
+        try:
+            # Try local imports
+            from crm_client import RealTimeXClient
+            from intelligence import IntelligenceLayer, AnalysisResult
+            from persistence import PersistenceLayer
+            from filters import EmailFilterOrchestrator, log_suppressed_email
+        except ImportError:
+            # Final fallback: add current directory to path
+            import sys
+            sys.path.insert(0, os.path.dirname(__file__))
+            from crm_client import RealTimeXClient
+            from intelligence import IntelligenceLayer, AnalysisResult
+            from persistence import PersistenceLayer
+            from filters import EmailFilterOrchestrator, log_suppressed_email
 
 # --- Production Logging Configuration ---
 logging.basicConfig(
