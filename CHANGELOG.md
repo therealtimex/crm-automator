@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.6] - 2026-01-01
+
+### Fixed
+- **Package Execution (uvx)**: Fixed `ModuleNotFoundError` when running as an installed package by updating internal imports to use absolute package paths (e.g., `from eml.xxx`) with local fallbacks.
+
 ## [1.9.5] - 2026-01-01
 
 ### Fixed
