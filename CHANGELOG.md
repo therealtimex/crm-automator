@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.13] - 2026-01-02
+
+### Fixed
+- **Web UI - Auto-Refresh**: Fixed modal interference where auto-refresh would abruptly close the Email Detail Modal
+  - Auto-refresh now pauses when modal is open and resumes when closed (all methods: close button, backdrop click, ESC key)
+  - Added visual feedback showing "Auto-refresh paused (modal open)" in status indicator
+  - Uses Quasar's native `hide` event for reliable detection of all modal close methods
+- **Web UI - Analytics Refresh**: Fixed Analytics tab "Refresh Data" button that was reloading entire page
+  - Now refreshes only chart data without page reload, preserving user state
+  - Timeline chart automatically updates when date range selector changes
+  - Shows success notification after refresh completes
+- **Web UI - Live Logs**: Added auto-scroll to Live Logs section
+  - Logs automatically scroll to bottom to show latest entries during processing
+  - Uses JavaScript scroll after each 1-second update for smooth UX
+
+### Changed
+- **Web UI - User Experience**: Improved overall responsiveness and state preservation across the web interface
+  - Users can now read email details without interruption from auto-refresh
+  - Analytics exploration is faster and doesn't lose tab/filter state
+  - Real-time logs are easier to follow during batch processing
+
 ## [1.9.12] - 2026-01-01
 
 ### Fixed

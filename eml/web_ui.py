@@ -1179,8 +1179,12 @@ async def process_files_async(files: List[Path], force: bool = False, verbose: b
         state.cleanup_files()
 
 
-def show_processing_detail(log_entry: Dict[str, Any]):
+def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, bool] = None):
     """Show detailed processing information in a modal dialog"""
+    # Track modal state for auto-refresh coordination
+    if modal_state is not None:
+        modal_state['value'] = True
+
     with ui.dialog() as dialog, ui.card().classes('w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden p-0'):
         # Header with close button
         with ui.row().classes('w-full justify-between items-start p-4 border-b border-white/10 shrink-0'):
@@ -1200,7 +1204,13 @@ def show_processing_detail(log_entry: Dict[str, Any]):
                     if file_name:
                         ui.label(f"File: {file_name}")
 
-            ui.button(icon='close', on_click=dialog.close).props('flat round').classes('text-gray-400')
+            def close_modal():
+                """Close modal and update state"""
+                if modal_state is not None:
+                    modal_state['value'] = False
+                dialog.close()
+
+            ui.button(icon='close', on_click=close_modal).props('flat round').classes('text-gray-400')
 
         # Fixed Tabs (shrink-0 prevents them from growing)
         with ui.tabs().classes('w-full shrink-0 border-b border-white/5 !h-12 text-gray-400') \
@@ -1380,6 +1390,11 @@ def show_processing_detail(log_entry: Dict[str, Any]):
                             ui.icon('check_circle', size='xl').classes('text-green-400')
                             ui.label('No errors - Processing completed successfully').classes('text-sm text-green-400')
 
+        # Ensure modal state resets when dialog closes (any method: button, backdrop, ESC)
+        if modal_state is not None:
+            # Use Quasar's 'hide' event which fires on all close methods
+            dialog.on('hide', lambda: modal_state.__setitem__('value', False))
+
         dialog.open()
 
 
@@ -1425,6 +1440,7 @@ def main_page():
                     # State for auto-refresh
                     auto_refresh_enabled = {'value': True}
                     last_refresh_time = {'value': datetime.now()}
+                    modal_is_open = {'value': False}  # Track if detail modal is open
 
                     # Header with title and controls
                     with ui.row().classes('p-4 border-b border-white/10 items-center justify-between'):
@@ -1436,11 +1452,13 @@ def main_page():
                             refresh_indicator = ui.label().classes('text-xs text-gray-500')
 
                             def update_refresh_indicator():
-                                if auto_refresh_enabled['value']:
+                                if not auto_refresh_enabled['value']:
+                                    refresh_indicator.text = 'Auto-refresh disabled'
+                                elif modal_is_open['value']:
+                                    refresh_indicator.text = 'Auto-refresh paused (modal open)'
+                                else:
                                     elapsed = (datetime.now() - last_refresh_time['value']).seconds
                                     refresh_indicator.text = f'Updated {elapsed}s ago'
-                                else:
-                                    refresh_indicator.text = 'Auto-refresh disabled'
 
                             # Update indicator every second
                             ui.timer(1.0, update_refresh_indicator)
@@ -1548,7 +1566,7 @@ def main_page():
                                                 pass
 
                                         # Clickable row
-                                        with ui.row().classes('w-full px-4 py-3 border-b border-white/5 items-center hover:bg-white/5 transition-colors cursor-pointer').on('click', lambda i=item: show_processing_detail(i)):
+                                        with ui.row().classes('w-full px-4 py-3 border-b border-white/5 items-center hover:bg-white/5 transition-colors cursor-pointer').on('click', lambda i=item: show_processing_detail(i, modal_is_open)):
                                             subject_display = subject if len(subject) <= 60 else subject[:60] + '...'
                                             sender_display = sender if len(sender) <= 30 else sender[:30] + '...'
 
@@ -1602,8 +1620,8 @@ def main_page():
 
                     # Auto-refresh timer (5 second interval)
                     def auto_refresh():
-                        """Automatically refresh activity if enabled"""
-                        if auto_refresh_enabled['value']:
+                        """Automatically refresh activity if enabled and modal is closed"""
+                        if auto_refresh_enabled['value'] and not modal_is_open['value']:
                             load_activity(current_page['value'], search_input.value or '')
 
                     ui.timer(5.0, auto_refresh)
@@ -1726,6 +1744,14 @@ def main_page():
                             for log in state.logs[-MAX_LOG_LINES:]:  # Show last N logs
                                 ui.label(log).classes('font-mono text-sm')
 
+                        # Auto-scroll to bottom to show latest logs
+                        ui.run_javascript(f'''
+                            const container = document.getElementById('{log_container.id}');
+                            if (container) {{
+                                container.scrollTop = container.scrollHeight;
+                            }}
+                        ''')
+
                     # Timer only active when processing
                     ui.timer(TIMER_INTERVAL, update_logs, active=lambda: state.is_processing)
 
@@ -1746,88 +1772,119 @@ def main_page():
                         value='Last 30 Days',
                         label='Date Range'
                     )
-                    with ui.button('Refresh Data', on_click=lambda: ui.navigate.reload(), icon='refresh').props('outline'):
+                    # Refresh button (will be connected later)
+                    refresh_button = ui.button('Refresh Data', icon='refresh').props('outline')
+                    with refresh_button:
                         ui.tooltip('Reload analytics data')
 
                 # Overview cards with charts
-                with ui.row().classes('w-full gap-4 mb-4'):
-                    # Pie chart card
-                    with ui.card().classes('flex-1'):
-                        stats = analytics.get_processing_stats()
-                        pie_chart = analytics.create_processing_pie_chart(stats)
-                        ui.plotly(pie_chart).classes('w-full')
-
-                    # Gauge chart card
-                    with ui.card().classes('flex-1'):
-                        gauge_chart = analytics.create_success_gauge_chart(stats)
-                        ui.plotly(gauge_chart).classes('w-full')
+                overview_charts_container = ui.row().classes('w-full gap-4 mb-4')
 
                 # Category breakdown
-                with ui.card().classes('w-full mb-4'):
-                    category_data = analytics.get_suppression_breakdown()
-                    if category_data:
-                        category_chart = analytics.create_category_bar_chart(category_data)
-                        ui.plotly(category_chart).classes('w-full')
-                    else:
-                        ui.label('No suppression data available yet').classes('text-gray-400 p-4')
+                category_container = ui.card().classes('w-full mb-4')
 
                 # Timeline chart
-                with ui.card().classes('w-full mb-4'):
-                    # Get number of days from selection
-                    days_map = {'Last 7 Days': 7, 'Last 30 Days': 30, 'Last 90 Days': 90}
-                    days = days_map.get(date_range_select.value, 30)
-
-                    timeline_data = analytics.get_timeline_data(days=days)
-                    if timeline_data['dates']:
-                        timeline_chart = analytics.create_timeline_chart(timeline_data)
-                        ui.plotly(timeline_chart).classes('w-full')
-                    else:
-                        ui.label('No timeline data available yet').classes('text-gray-400 p-4')
+                timeline_container = ui.card().classes('w-full mb-4')
 
                 # Two column layout for remaining charts
-                with ui.row().classes('w-full gap-4'):
-                    # Top suppressed domains
-                    with ui.card().classes('flex-1'):
-                        top_domains = analytics.get_top_suppressed_domains(limit=10)
-                        if top_domains:
-                            domains_chart = analytics.create_top_domains_chart(top_domains)
-                            ui.plotly(domains_chart).classes('w-full')
+                bottom_charts_container = ui.row().classes('w-full gap-4')
+
+                # Define refresh function
+                def refresh_analytics_data():
+                    """Refresh all analytics charts without page reload"""
+                    # Clear all containers
+                    overview_charts_container.clear()
+                    category_container.clear()
+                    timeline_container.clear()
+                    bottom_charts_container.clear()
+
+                    # Reload overview charts
+                    with overview_charts_container:
+                        with ui.card().classes('flex-1'):
+                            stats = analytics.get_processing_stats()
+                            pie_chart = analytics.create_processing_pie_chart(stats)
+                            ui.plotly(pie_chart).classes('w-full')
+
+                        with ui.card().classes('flex-1'):
+                            gauge_chart = analytics.create_success_gauge_chart(stats)
+                            ui.plotly(gauge_chart).classes('w-full')
+
+                    # Reload category breakdown
+                    with category_container:
+                        category_data = analytics.get_suppression_breakdown()
+                        if category_data:
+                            category_chart = analytics.create_category_bar_chart(category_data)
+                            ui.plotly(category_chart).classes('w-full')
                         else:
-                            ui.label('Top Suppressed Domains').classes('text-h6 mb-2')
                             ui.label('No suppression data available yet').classes('text-gray-400 p-4')
 
-                    # Suppression by reason
-                    with ui.card().classes('flex-1'):
-                        reason_data = analytics.get_reason_breakdown()
-                        if reason_data:
-                            ui.label('Suppression by Reason').classes('text-h6 mb-2')
+                    # Reload timeline chart
+                    with timeline_container:
+                        days_map = {'Last 7 Days': 7, 'Last 30 Days': 30, 'Last 90 Days': 90}
+                        days = days_map.get(date_range_select.value, 30)
 
-                            # Create simple bar chart for reasons
-                            reasons = list(reason_data.keys())
-                            counts = list(reason_data.values())
-
-                            reason_fig = go.Figure(data=[go.Bar(
-                                x=counts,
-                                y=reasons,
-                                orientation='h',
-                                marker=dict(color='#9C27B0', line=dict(color='#7B1FA2', width=1)),
-                                text=counts,
-                                textposition='outside'
-                            )])
-
-                            reason_fig.update_layout(
-                                title='Top 10 Suppression Reasons',
-                                xaxis_title='Count',
-                                yaxis_title='Reason',
-                                height=max(300, len(reasons) * 30),
-                                margin=dict(t=40, b=40, l=200, r=40),
-                                showlegend=False
-                            )
-
-                            ui.plotly(reason_fig).classes('w-full')
+                        timeline_data = analytics.get_timeline_data(days=days)
+                        if timeline_data['dates']:
+                            timeline_chart = analytics.create_timeline_chart(timeline_data)
+                            ui.plotly(timeline_chart).classes('w-full')
                         else:
-                            ui.label('Suppression by Reason').classes('text-h6 mb-2')
-                            ui.label('No reason data available yet').classes('text-gray-400 p-4')
+                            ui.label('No timeline data available yet').classes('text-gray-400 p-4')
+
+                    # Reload bottom charts
+                    with bottom_charts_container:
+                        # Top suppressed domains
+                        with ui.card().classes('flex-1'):
+                            top_domains = analytics.get_top_suppressed_domains(limit=10)
+                            if top_domains:
+                                domains_chart = analytics.create_top_domains_chart(top_domains)
+                                ui.plotly(domains_chart).classes('w-full')
+                            else:
+                                ui.label('Top Suppressed Domains').classes('text-h6 mb-2')
+                                ui.label('No suppression data available yet').classes('text-gray-400 p-4')
+
+                        # Suppression by reason
+                        with ui.card().classes('flex-1'):
+                            reason_data = analytics.get_reason_breakdown()
+                            if reason_data:
+                                ui.label('Suppression by Reason').classes('text-h6 mb-2')
+
+                                # Create simple bar chart for reasons
+                                reasons = list(reason_data.keys())
+                                counts = list(reason_data.values())
+
+                                reason_fig = go.Figure(data=[go.Bar(
+                                    x=counts,
+                                    y=reasons,
+                                    orientation='h',
+                                    marker=dict(color='#9C27B0', line=dict(color='#7B1FA2', width=1)),
+                                    text=counts,
+                                    textposition='outside'
+                                )])
+
+                                reason_fig.update_layout(
+                                    title='Top 10 Suppression Reasons',
+                                    xaxis_title='Count',
+                                    yaxis_title='Reason',
+                                    height=max(300, len(reasons) * 30),
+                                    margin=dict(t=40, b=40, l=200, r=40),
+                                    showlegend=False
+                                )
+
+                                ui.plotly(reason_fig).classes('w-full')
+                            else:
+                                ui.label('Suppression by Reason').classes('text-h6 mb-2')
+                                ui.label('No reason data available yet').classes('text-gray-400 p-4')
+
+                    ui.notify('Analytics data refreshed', type='positive')
+
+                # Connect refresh button
+                refresh_button.on('click', refresh_analytics_data)
+
+                # Auto-refresh timeline when date range changes
+                date_range_select.on('update:model-value', refresh_analytics_data)
+
+                # Initial load
+                refresh_analytics_data()
 
         # ========== CONFIG TAB ==========
         with ui.tab_panel(config_tab):
