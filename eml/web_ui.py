@@ -1191,7 +1191,7 @@ def show_processing_detail(log_entry: Dict[str, Any]):
                                     ui.label('Reason:').classes('text-xs text-gray-400 font-bold mb-1')
                                     ui.label(suppression_reason).classes('text-sm text-gray-300 leading-relaxed')
                     else:
-                        with ui.column().classes('items-center justify-center p-12 gap-3'):
+                        with ui.column().classes('w-full items-center justify-center p-12 gap-3'):
                             ui.icon('psychology', size='xl').classes('text-gray-400')
                             ui.label('No AI analysis data available').classes('text-sm text-gray-500')
 
@@ -1252,7 +1252,7 @@ def show_processing_detail(log_entry: Dict[str, Any]):
                                 ui.label('CRM Error').classes('text-xs font-bold text-red-400 uppercase mb-3')
                                 ui.label(crm_error).classes('text-sm text-red-300 leading-relaxed whitespace-pre-wrap')
                     else:
-                        with ui.column().classes('items-center justify-center p-12 gap-3'):
+                        with ui.column().classes('w-full items-center justify-center p-12 gap-3'):
                             ui.icon('business', size='xl').classes('text-gray-400')
                             ui.label('No CRM integration data').classes('text-sm text-gray-500')
 
@@ -1278,7 +1278,7 @@ def show_processing_detail(log_entry: Dict[str, Any]):
                                 ui.label('Traceback:').classes('text-xs text-gray-400 font-bold mb-1')
                                 ui.label(error_traceback).classes('text-xs text-gray-400 font-mono bg-black/40 p-3 rounded whitespace-pre-wrap overflow-x-auto')
                     else:
-                        with ui.column().classes('items-center justify-center p-12 gap-3'):
+                        with ui.column().classes('w-full items-center justify-center p-12 gap-3'):
                             ui.icon('check_circle', size='xl').classes('text-green-400')
                             ui.label('No errors - Processing completed successfully').classes('text-sm text-green-400')
 
