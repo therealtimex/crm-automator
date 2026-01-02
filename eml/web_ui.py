@@ -1407,43 +1407,6 @@ def main_page():
                 # Status messages
                 status_message = ui.label().classes('mb-4')
 
-                # Action buttons at top
-                with ui.row().classes('gap-2 mb-4'):
-                    async def save_configuration():
-                        """Save configuration to .env file"""
-                        # Collect all form data
-                        config_to_save = {}
-                        for key, input_field in form_data.items():
-                            if hasattr(input_field, 'value'):
-                                value = input_field.value or ''
-                                config_to_save[key] = value
-
-                        # Validate
-                        errors = config_manager.validate_config(config_to_save)
-                        if errors:
-                            status_message.text = '❌ Validation errors: ' + ', '.join(errors)
-                            status_message.classes('text-negative')
-                            ui.notify('Validation failed', type='negative')
-                            return
-
-                        # Save
-                        success, message = config_manager.save_config(config_to_save)
-                        if success:
-                            status_message.text = f'✅ {message}'
-                            status_message.classes('text-positive')
-                            ui.notify('Configuration saved successfully!', type='positive')
-
-                            # Reload environment
-                            load_dotenv(override=True)
-                        else:
-                            status_message.text = f'❌ {message}'
-                            status_message.classes('text-negative')
-                            ui.notify('Save failed', type='negative')
-
-                    ui.button('Save Configuration', on_click=save_configuration, icon='save').props('color=primary unelevated')
-                    with ui.button('Reload from File', on_click=lambda: ui.navigate.reload(), icon='refresh').props('outline'):
-                        ui.tooltip('Discard changes and reload from .env file')
-
                 # CRM API Settings
                 with ui.card().classes('w-full mb-4'):
                     ui.label('CRM API Settings').classes('text-h6 mb-3')
@@ -1674,7 +1637,39 @@ def main_page():
                     current_db = os.getenv('PERSISTENCE_DB_PATH', './eml_processing.db')
                     ui.label(f'Current: {current_db}').classes('text-caption text-gray-400')
 
-                # Final action buttons
+                # Save configuration function
+                async def save_configuration():
+                    """Save configuration to .env file"""
+                    # Collect all form data
+                    config_to_save = {}
+                    for key, input_field in form_data.items():
+                        if hasattr(input_field, 'value'):
+                            value = input_field.value or ''
+                            config_to_save[key] = value
+
+                    # Validate
+                    errors = config_manager.validate_config(config_to_save)
+                    if errors:
+                        status_message.text = '❌ Validation errors: ' + ', '.join(errors)
+                        status_message.classes('text-negative')
+                        ui.notify('Validation failed', type='negative')
+                        return
+
+                    # Save
+                    success, message = config_manager.save_config(config_to_save)
+                    if success:
+                        status_message.text = f'✅ {message}'
+                        status_message.classes('text-positive')
+                        ui.notify('Configuration saved successfully!', type='positive')
+
+                        # Reload environment
+                        load_dotenv(override=True)
+                    else:
+                        status_message.text = f'❌ {message}'
+                        status_message.classes('text-negative')
+                        ui.notify('Save failed', type='negative')
+
+                # Final action buttons (at bottom after all fields)
                 with ui.row().classes('gap-2 mt-4'):
                     ui.button('Save Configuration', on_click=save_configuration, icon='save').props('color=primary unelevated')
                     
