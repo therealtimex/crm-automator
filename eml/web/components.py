@@ -45,8 +45,8 @@ def apply_nexus_theme():
             .text-main { color: #1f2937; }
             .body--dark .text-main { color: rgba(255, 255, 255, 0.9); }
             
-            .text-secondary { color: #4b5563; }
-            .body--dark .text-secondary { color: rgba(255, 255, 255, 0.5); }
+            .text-secondary { color: #374151; }
+            .body--dark .text-secondary { color: rgba(255, 255, 255, 0.7); }
             
             /* --- Top Bar & Header --- */
             .q-header { 
@@ -141,7 +141,7 @@ def status_badge(text: str, state: str = 'neutral'):
         'warning': 'text-orange-400 bg-orange-500/10 border-orange-500/20',
         'error':   'text-red-400 bg-red-500/10 border-red-500/20',
         'negative': 'text-red-400 bg-red-500/10 border-red-500/20',
-        'skipped': 'text-gray-400 bg-gray-500/10 border-gray-500/20',
+        'skipped': 'text-secondary bg-gray-500/10 border-gray-500/20',
         'failed': 'text-red-400 bg-red-500/10 border-red-500/20',
         'suppressed': 'text-orange-400 bg-orange-500/10 border-orange-500/20',
     }
@@ -197,7 +197,7 @@ def create_header_with_tabs(dark_mode_handler, active_tab_name: str = 'dashboard
                 ui.element('div').classes('w-[1px] h-6 bg-white/10 mx-1 md:hidden')
 
             # Center: Tabs
-            with ui.tabs().classes('bg-transparent text-gray-400') \
+            with ui.tabs().classes('bg-transparent text-secondary') \
                 .props('indicator-color="blue-400" active-color="blue-400" dense no-caps') as tabs:
                 dashboard_tab = ui.tab('Dashboard', icon='dashboard')
                 upload_tab = ui.tab('Upload & Process', icon='upload')
@@ -235,9 +235,9 @@ def create_stat_card(title: str, value: int, icon: str = None, color: str = None
                     trend_styles = {
                         'up': ('text-green-400', 'trending_up'),
                         'down': ('text-red-400', 'trending_down'),
-                        'neutral': ('text-gray-400', 'remove')  # horizontal line icon
+                        'neutral': ('text-secondary', 'remove')  # horizontal line icon
                     }
-                    trend_color, trend_icon = trend_styles.get(trend, ('text-gray-400', 'remove'))
+                    trend_color, trend_icon = trend_styles.get(trend, ('text-secondary', 'remove'))
 
                     with ui.row().classes('items-center gap-1 mt-1'):
                         ui.icon(trend_icon, size='xs').classes(trend_color)
@@ -278,7 +278,7 @@ def create_recent_activity_item(item: Dict[str, Any]):
             sender = item.get('sender', 'Unknown')
             if len(sender) > 40:
                 sender = sender[:40] + '...'
-            ui.label(sender).classes('text-caption text-gray-400')
+            ui.label(sender).classes('text-caption text-secondary')
 
         # Timestamp
         timestamp = item.get('processing_started_at', '')
@@ -286,7 +286,7 @@ def create_recent_activity_item(item: Dict[str, Any]):
             try:
                 dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                 time_str = dt.strftime('%H:%M')
-                ui.label(time_str).classes('text-caption text-gray-500')
+                ui.label(time_str).classes('text-caption text-secondary')
             except:
                 pass
 
@@ -295,7 +295,7 @@ def create_empty_state(icon: str, title: str, description: str, action_label: st
     """Create empty state UI"""
     with ui.column().classes('w-full items-center justify-center p-12 gap-4'):
         ui.icon(icon, size='xl').classes('text-grey-4')
-        ui.label(title).classes('text-h6 text-gray-500')
+        ui.label(title).classes('text-h6 text-secondary')
         ui.label(description).classes('text-caption text-gray-600 text-center')
 
         if action_label and action_route:

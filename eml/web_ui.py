@@ -182,7 +182,7 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
                     modal_state['value'] = False
                 dialog.close()
 
-            ui.button(icon='close', on_click=close_modal).props('flat round').classes('text-gray-400')
+            ui.button(icon='close', on_click=close_modal).props('flat round').classes('text-secondary')
 
         # Fixed Tabs (shrink-0 prevents them from growing)
         with ui.tabs().classes('w-full shrink-0 border-b border-black/5 dark:border-white/5 !h-12 text-secondary') \
@@ -207,16 +207,16 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
 
                             duration = log_entry.get('processing_duration_ms', 0)
                             if duration:
-                                ui.label(f"Duration: {duration}ms").classes('text-xs text-gray-400')
+                                ui.label(f"Duration: {duration}ms").classes('text-xs text-secondary')
 
                         started_at = log_entry.get('processing_started_at', '')
                         completed_at = log_entry.get('processing_completed_at', '')
 
                         with ui.column().classes('gap-2 mt-3'):
                             if started_at:
-                                ui.label(f"Started: {started_at}").classes('text-xs text-gray-400')
+                                ui.label(f"Started: {started_at}").classes('text-xs text-secondary')
                             if completed_at:
-                                ui.label(f"Completed: {completed_at}").classes('text-xs text-gray-400')
+                                ui.label(f"Completed: {completed_at}").classes('text-xs text-secondary')
 
                     # Email Metadata
                     with ui.card().classes('w-full bg-purple-900/20 border border-purple-500/20'):
@@ -229,12 +229,12 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
 
                             message_id = log_entry.get('message_id', '')
                             if message_id:
-                                ui.label(f"Message ID: {message_id}").classes('text-xs text-gray-400 font-mono break-all')
+                                ui.label(f"Message ID: {message_id}").classes('text-xs text-secondary font-mono break-all')
 
                             file_path = log_entry.get('file_path', '')
                             if file_path:
                                 ui.separator().classes('border-black/5 dark:border-white/5 my-2')
-                                ui.label('File Path').classes('text-xs text-gray-400 font-bold uppercase mb-1')
+                                ui.label('File Path').classes('text-xs text-secondary font-bold uppercase mb-1')
                                 ui.label(file_path).classes('text-xs text-indigo-300 font-mono bg-black/20 p-2 rounded break-all')
 
             # AI ANALYSIS TAB
@@ -264,16 +264,16 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
 
                                 if suppression_category:
                                     with ui.row().classes('items-center gap-2 mb-2'):
-                                        ui.label('Category:').classes('text-xs text-gray-400 font-bold')
+                                        ui.label('Category:').classes('text-xs text-secondary font-bold')
                                         ui.label(suppression_category.upper()).classes('px-3 py-1 bg-yellow-500/20 rounded-full text-xs font-bold text-yellow-400')
 
                                 if suppression_reason:
-                                    ui.label('Reason:').classes('text-xs text-gray-400 font-bold mb-1')
+                                    ui.label('Reason:').classes('text-xs text-secondary font-bold mb-1')
                                     ui.label(suppression_reason).classes('text-sm text-gray-300 leading-relaxed')
                     else:
                         with ui.column().classes('w-full items-center justify-center p-12 gap-3'):
-                            ui.icon('psychology', size='xl').classes('text-gray-400')
-                            ui.label('No AI analysis data available').classes('text-sm text-gray-500')
+                            ui.icon('psychology', size='xl').classes('text-secondary')
+                            ui.label('No AI analysis data available').classes('text-sm text-secondary')
 
             # CRM INTEGRATION TAB
             with ui.tab_panel(crm_tab):
@@ -291,15 +291,15 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
                             with ui.row().classes('gap-6 mb-3'):
                                 with ui.column().classes('items-center'):
                                     ui.label(str(contacts_created)).classes('text-3xl font-bold text-green-400')
-                                    ui.label('Contacts').classes('text-xs text-gray-400')
+                                    ui.label('Contacts').classes('text-xs text-secondary')
 
                                 with ui.column().classes('items-center'):
                                     ui.label(str(companies_created)).classes('text-3xl font-bold text-green-400')
-                                    ui.label('Companies').classes('text-xs text-gray-400')
+                                    ui.label('Companies').classes('text-xs text-secondary')
 
                                 with ui.column().classes('items-center'):
                                     ui.label(str(activities_created)).classes('text-3xl font-bold text-green-400')
-                                    ui.label('Activities').classes('text-xs text-gray-400')
+                                    ui.label('Activities').classes('text-xs text-secondary')
 
                         # CRM Payloads
                         ui.label('Payloads').classes('text-xs font-bold text-blue-400 uppercase mt-4 mb-2')
@@ -324,7 +324,7 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
                             elif count > 0:
                                     # Show empty payload warning if count > 0 but no payload (legacy records)
                                     with ui.expansion(f"{label} ({count} items - Legacy)", icon="warning").classes("w-full bg-orange-900/10 border border-orange-500/20 rounded mb-2"):
-                                        ui.label("Payload data not available for this record.").classes("text-xs text-gray-400 p-2")
+                                        ui.label("Payload data not available for this record.").classes("text-xs text-secondary p-2")
 
                         # CRM Error
                         if crm_error:
@@ -333,8 +333,8 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
                                 ui.label(crm_error).classes('text-sm text-red-300 leading-relaxed whitespace-pre-wrap')
                     else:
                         with ui.column().classes('w-full items-center justify-center p-12 gap-3'):
-                            ui.icon('business', size='xl').classes('text-gray-400')
-                            ui.label('No CRM integration data').classes('text-sm text-gray-500')
+                            ui.icon('business', size='xl').classes('text-secondary')
+                            ui.label('No CRM integration data').classes('text-sm text-secondary')
 
             # ERROR DETAILS TAB
             with ui.tab_panel(error_tab):
@@ -351,12 +351,12 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
                                 ui.label(f"Error Type: {error_type}").classes('text-sm font-bold text-red-300 mb-2')
 
                             if error_message:
-                                ui.label('Message:').classes('text-xs text-gray-400 font-bold mb-1')
+                                ui.label('Message:').classes('text-xs text-secondary font-bold mb-1')
                                 ui.label(error_message).classes('text-sm text-red-300 mb-3 leading-relaxed')
 
                             if error_traceback:
-                                ui.label('Traceback:').classes('text-xs text-gray-400 font-bold mb-1')
-                                ui.label(error_traceback).classes('text-xs text-gray-400 font-mono bg-black/40 p-3 rounded whitespace-pre-wrap overflow-x-auto')
+                                ui.label('Traceback:').classes('text-xs text-secondary font-bold mb-1')
+                                ui.label(error_traceback).classes('text-xs text-secondary font-mono bg-black/40 p-3 rounded whitespace-pre-wrap overflow-x-auto')
                     else:
                         with ui.column().classes('w-full items-center justify-center p-12 gap-3'):
                             ui.icon('check_circle', size='xl').classes('text-green-400')
@@ -403,7 +403,7 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
                 with ui.row().classes('p-4 border-b border-black/10 dark:border-white/10 items-center justify-between'):
                     ui.label('RECENT ACTIVITY').classes('text-sm font-bold tracking-wide text-main')
                     with ui.row().classes('gap-2 items-center'):
-                        refresh_indicator = ui.label().classes('text-xs text-gray-500')
+                        refresh_indicator = ui.label().classes('text-xs text-secondary')
                         def update_refresh_indicator():
                             if not auto_refresh_enabled['value']: refresh_indicator.text = 'Auto-refresh disabled'
                             elif modal_is_open['value']: refresh_indicator.text = 'Auto-refresh paused (modal open)'
@@ -451,17 +451,17 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
 
                                     with ui.row().classes('w-full px-4 py-3 border-b border-black/5 dark:border-white/5 items-center hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer').on('click', lambda i=item: show_processing_detail(i, modal_is_open)):
                                         ui.label(subject[:60] + ('...' if len(subject) > 60 else '')).classes('flex-[2] font-medium text-sm truncate pr-2 text-main')
-                                        ui.label(sender[:30] + ('...' if len(sender) > 30 else '')).classes('flex-[1] text-xs text-gray-400 truncate pr-2')
+                                        ui.label(sender[:30] + ('...' if len(sender) > 30 else '')).classes('flex-[1] text-xs text-secondary truncate pr-2')
                                         with ui.element('div').classes('w-24 flex justify-center'): status_badge(status, status)
-                                        ui.label(time_str).classes('w-24 text-right text-xs text-gray-500 font-mono')
+                                        ui.label(time_str).classes('w-24 text-right text-xs text-secondary font-mono')
 
                                 if total_pages > 1:
                                     with ui.row().classes('w-full p-4 justify-center border-t border-white/10'):
                                         ui.pagination(min=1, max=total_pages, value=current_page['value'], direction_links=True, on_change=lambda e: handle_page_change(e.value))
                             else:
                                 with ui.column().classes('w-full items-center justify-center p-12 gap-3'):
-                                    ui.icon('inbox', size='xl').classes('text-gray-400')
-                                    ui.label('No matching emails found' if search_query else 'No Activity Yet').classes('text-h6 text-gray-500')
+                                    ui.icon('inbox', size='xl').classes('text-secondary')
+                                    ui.label('No matching emails found' if search_query else 'No Activity Yet').classes('text-h6 text-secondary')
                     except Exception as e:
                         with activity_container: ui.label(f'Error: {e}').classes('text-negative text-caption')
 
@@ -637,8 +637,8 @@ def render_upload_tab(upload_tab, page_is_visible):
                         with ui.column().classes('w-full items-center justify-center p-12 gap-3'):
                             ui.icon('cloud_upload', size='xl').classes('text-primary')
                             ui.label('Drag & drop EML files here').classes('text-h6 font-medium text-main')
-                            ui.label('or click anywhere to browse').classes('text-sm text-gray-400')
-                            with ui.row().classes('gap-4 mt-3 text-xs text-gray-500'):
+                            ui.label('or click anywhere to browse').classes('text-sm text-secondary')
+                            with ui.row().classes('gap-4 mt-3 text-xs text-secondary'):
                                 ui.label(f'0 of {MAX_UPLOAD_FILES} files')
                                 ui.label('•')
                                 ui.label(f'Max {state.format_size(MAX_FILE_SIZE)} per file')
@@ -663,9 +663,9 @@ def render_upload_tab(upload_tab, page_is_visible):
                             # Scroll hint when there are many files
                             if file_count > 8:
                                 with ui.row().classes('w-full px-3 pb-2 items-center justify-center gap-2'):
-                                    ui.icon('keyboard_arrow_down', size='xs').classes('text-gray-500')
-                                    ui.label('Scroll to see all files').classes('text-xs text-gray-500')
-                                    ui.icon('keyboard_arrow_down', size='xs').classes('text-gray-500')
+                                    ui.icon('keyboard_arrow_down', size='xs').classes('text-secondary')
+                                    ui.label('Scroll to see all files').classes('text-xs text-secondary')
+                                    ui.icon('keyboard_arrow_down', size='xs').classes('text-secondary')
 
                         # Scrollable file list container with custom scrollbar
                         scroll_container = ui.column().classes('w-full gap-2 p-4 overflow-y-auto').style('''
@@ -697,7 +697,7 @@ def render_upload_tab(upload_tab, page_is_visible):
                                     ui.icon('description', size='sm').classes('text-primary flex-shrink-0')
                                     with ui.column().classes('flex-1 min-w-0'):
                                         ui.label(display_name).classes('text-sm text-main truncate')
-                                        ui.label(file_size_str).classes('text-xs text-gray-400')
+                                        ui.label(file_size_str).classes('text-xs text-secondary')
                                     ui.button(icon='close', on_click=remove_file).props('flat dense round size=sm').classes('text-secondary hover:text-main')
 
             def handle_rejected(e):
@@ -820,7 +820,7 @@ def render_upload_tab(upload_tab, page_is_visible):
 
             # Live logs
             with ui.card().classes('w-full'):
-                ui.label('LIVE LOGS').classes('text-xs font-bold text-gray-400 mb-2')
+                ui.label('LIVE LOGS').classes('text-xs font-bold text-secondary mb-2')
                 log_container = ui.column().classes('w-full bg-gray-900 p-4 rounded font-mono text-xs text-gray-300').style('max-height: 400px; overflow-y: auto')
                 displayed_log_count = {'value': 0}
                 window_start = {'value': 0}
@@ -887,19 +887,19 @@ def render_analytics_tab(analytics_tab):
                 with category_container:
                     cat_data = analytics.get_suppression_breakdown()
                     if cat_data: ui.plotly(analytics.create_category_bar_chart(cat_data)).classes('w-full')
-                    else: ui.label('No suppression data available yet').classes('text-gray-400 p-4')
+                    else: ui.label('No suppression data available yet').classes('text-secondary p-4')
 
                 with timeline_container:
                     days = {'Last 7 Days': 7, 'Last 30 Days': 30, 'Last 90 Days': 90}.get(tab_state['range'], 30)
                     time_data = analytics.get_timeline_data(days=days)
                     if time_data['dates']: ui.plotly(analytics.create_timeline_chart(time_data)).classes('w-full')
-                    else: ui.label('No timeline data available yet').classes('text-gray-400 p-4')
+                    else: ui.label('No timeline data available yet').classes('text-secondary p-4')
 
                 with bottom_charts_container:
                     with ui.card().classes('flex-1'):
                         top_domains = analytics.get_top_suppressed_domains(limit=10)
                         if top_domains: ui.plotly(analytics.create_top_domains_chart(top_domains)).classes('w-full')
-                        else: ui.label('No suppression data available yet').classes('text-gray-400 p-4')
+                        else: ui.label('No suppression data available yet').classes('text-secondary p-4')
                     with ui.card().classes('flex-1'):
                         reason_data = analytics.get_reason_breakdown()
                         if reason_data:
@@ -908,7 +908,7 @@ def render_analytics_tab(analytics_tab):
                             reason_fig = go.Figure(data=[go.Bar(x=counts, y=reasons, orientation='h', marker=dict(color='#9C27B0'), text=counts, textposition='outside')])
                             reason_fig.update_layout(title='Top 10 Suppression Reasons', height=max(300, len(reasons) * 30), margin=dict(t=40, b=40, l=200, r=40))
                             ui.plotly(reason_fig).classes('w-full')
-                        else: ui.label('No reason data available yet').classes('text-gray-400 p-4')
+                        else: ui.label('No reason data available yet').classes('text-secondary p-4')
                 ui.notify('Analytics data refreshed', type='positive')
 
             refresh_analytics_data()
@@ -1026,14 +1026,14 @@ def render_config_tab(config_tab):
 
             # 3. Search Provider Settings
             with create_section('Search Providers (Optional)', 'search'):
-                ui.label('Comma-separated list (duckduckgo, serper, serpapi)').classes('text-[10px] text-gray-500')
+                ui.label('Comma-separated list (duckduckgo, serper, serpapi)').classes('text-[10px] text-secondary')
                 form_data['SEARCH_PROVIDERS'] = ui.input('Providers', value=current_config.get('SEARCH_PROVIDERS', 'duckduckgo')).classes('w-full').props('outlined dense')
                 form_data['SERPER_API_KEY'] = ui.input('Serper API Key', value=current_config.get('SERPER_API_KEY', ''), password=True).classes('w-full').props('outlined dense')
                 form_data['SERPAPI_KEY'] = ui.input('SerpAPI Key', value=current_config.get('SERPAPI_KEY', ''), password=True).classes('w-full').props('outlined dense')
 
             # 4. Internal Staff Filtering
             with create_section('Internal Staff Filtering', 'person_off'):
-                ui.label('Define who NOT to sync to CRM').classes('text-[10px] text-gray-500')
+                ui.label('Define who NOT to sync to CRM').classes('text-[10px] text-secondary')
                 form_data['INTERNAL_DOMAINS'] = ui.input('Internal Domains (e.g. company.com)', value=current_config.get('INTERNAL_DOMAINS', '')).classes('w-full').props('outlined dense')
                 form_data['INTERNAL_EMAILS'] = ui.input('Internal Emails (e.g. staff@gmail.com)', value=current_config.get('INTERNAL_EMAILS', '')).classes('w-full').props('outlined dense')
 
@@ -1139,7 +1139,7 @@ def render_suppressed_tab(suppressed_tab, page_is_visible):
                                     ui.label(e.get('sender', '')[:40]).classes('flex-[1] text-xs truncate text-secondary')
                                     ui.label(e.get('subject', '')[:50]).classes('flex-[2] font-medium text-sm truncate text-main')
                                     ui.label(e.get('category', 'unknown')).classes('w-32 text-center text-[10px] bg-black/10 dark:bg-white/10 rounded-full text-secondary')
-                        else: ui.label('No suppressed emails found').classes('text-secondary italic text-center w-full py-10 opacity-70')
+                        else: ui.label('No suppressed emails found').classes('text-secondary italic text-center w-full py-10')
                     
                     # 3. Refresh Chips
                     chips_ui.refresh()
