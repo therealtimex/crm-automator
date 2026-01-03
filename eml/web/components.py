@@ -48,8 +48,8 @@ def apply_nexus_theme():
             .text-secondary { color: #374151; }
             .body--dark .text-secondary { color: rgba(255, 255, 255, 0.7); }
 
-            .text-tertiary { color: #6b7280; }
-            .body--dark .text-tertiary { color: rgba(255, 255, 255, 0.55); }
+            .text-tertiary { color: #4b5563; }
+            .body--dark .text-tertiary { color: rgba(255, 255, 255, 0.6); }
             
             /* --- Top Bar & Header --- */
             .q-header { 
