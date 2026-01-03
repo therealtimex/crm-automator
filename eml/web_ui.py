@@ -948,12 +948,14 @@ def render_config_tab(config_tab):
             current_config = config_manager.load_config()
             form_data = {}
 
-            with ui.row().classes('w-full items-center justify-between mb-2'):
+            with ui.row().classes('w-full items-center justify-between mb-2 h-9'):
                 ui.label('Configuration').classes('text-h4 font-bold')
-                with ui.row().classes('gap-2'):
-                    ui.upload(on_upload=handle_import, label='Import .env', auto_upload=True) \
-                        .props('accept=.env,.txt max-files=1 flat dense color=primary icon=file_upload hide-upload-btn hide-upload-progress hide-file-list no-thumbnails') \
-                        .classes('w-40')
+                with ui.row().classes('gap-2 items-center h-9'):
+                    upload_component = ui.upload(on_upload=handle_import, auto_upload=True, max_files=1) \
+                        .props('accept=.env,.txt')
+                    upload_component.style('position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0;')
+                    ui.button('Import .env', icon='file_upload', on_click=lambda: upload_component.run_method('pickFiles')) \
+                        .props('flat color=primary').classes('h-9 min-h-9 px-3')
                     ui.icon('settings', size='lg').classes('text-primary')
 
             def create_section(title, icon=None):
