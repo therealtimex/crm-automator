@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.22] - 2026-01-02
+
+### Improved
+- **Web UI - Theming**: Enhanced Light Mode experience with improved contrast and visual hierarchy
+- **Web UI - Theming**: Implemented semantic text classes (`text-secondary`, `text-tertiary`) for consistent readability across both Light and Dark themes
+- **Web UI - Components**: Refined badge colors and helper text styling to adapt dynamically to the active theme
+
 ## [1.9.21] - 2026-01-02
 
 ### Improved
