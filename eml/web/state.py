@@ -36,6 +36,25 @@ class ProcessingState:
             "failed": 0
         }
 
+    def get_total_size(self) -> int:
+        """Calculate total size of all uploaded files in bytes"""
+        total = 0
+        for file_path in self.uploaded_files:
+            try:
+                if file_path.exists():
+                    total += file_path.stat().st_size
+            except Exception as e:
+                logger.warning(f"Failed to get size for {file_path}: {e}")
+        return total
+
+    def format_size(self, size_bytes: int) -> str:
+        """Format bytes into human-readable size"""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
+
     def cleanup_files(self):
         """Clean up uploaded temporary files"""
         for file_path in self.uploaded_files:

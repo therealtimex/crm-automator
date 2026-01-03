@@ -49,9 +49,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-MAX_FILE_SIZE = 20_000_000  # 20MB
-MAX_UPLOAD_FILES_DISPLAY = 10
+MAX_FILE_SIZE = 20_000_000  # 20MB per file
 MAX_UPLOAD_FILES = 50  # Maximum number of files that can be uploaded
+MAX_TOTAL_SIZE = 500_000_000  # 500MB total across all files
 MAX_LOG_LINES = 50
 DEFAULT_LIMIT = 100
 TOP_DOMAINS_LIMIT = 10
@@ -495,104 +495,302 @@ def render_upload_tab(upload_tab, page_is_visible):
                     logger.warning(f"Upload event missing file: {e}")
                     return
 
-                if len(state.uploaded_files) >= MAX_UPLOAD_FILES:
-                    ui.notify(f'⚠️  Maximum {MAX_UPLOAD_FILES} files allowed.', type='warning')
-                    return
-
                 file_obj = e.file
-                if not file_obj.name.lower().endswith('.eml'):
-                    ui.notify(f'❌ {file_obj.name} - Only .eml files allowed', type='warning')
+                safe_filename = os.path.basename(file_obj.name)
+
+                # Validation: File count limit
+                if len(state.uploaded_files) >= MAX_UPLOAD_FILES:
+                    ui.notify(
+                        f'⚠️ Maximum {MAX_UPLOAD_FILES} files allowed. Remove some files first.',
+                        type='warning',
+                        position='top'
+                    )
                     return
 
-                safe_filename = os.path.basename(file_obj.name)
-                # Check for duplicate filenames
+                # Validation: File type
+                if not file_obj.name.lower().endswith('.eml'):
+                    ui.notify(
+                        f'❌ {safe_filename} - Only .eml files are accepted',
+                        type='warning',
+                        position='top'
+                    )
+                    return
+
+                # Validation: Duplicate filenames
                 if any((f.name.split('_', 1)[1] if '_' in f.name else f.name) == safe_filename for f in state.uploaded_files):
-                    ui.notify(f'⚠️  {safe_filename} already uploaded', type='warning')
+                    ui.notify(
+                        f'⚠️ {safe_filename} is already in the upload queue',
+                        type='warning',
+                        position='top'
+                    )
                     return
 
                 unique_name = f"{uuid.uuid4().hex[:8]}_{safe_filename}"
                 temp_path = Path(tempfile.gettempdir()) / unique_name
 
                 try:
+                    # Read file data
                     file_data = await file_obj.read()
+                    file_size = len(file_data)
+
+                    # Validation: Individual file size
+                    if file_size > MAX_FILE_SIZE:
+                        ui.notify(
+                            f'❌ {safe_filename} is too large ({state.format_size(file_size)}). Maximum file size: {state.format_size(MAX_FILE_SIZE)}',
+                            type='warning',
+                            position='top',
+                            timeout=5000
+                        )
+                        return
+
+                    # Validation: Total size limit
+                    current_total = state.get_total_size()
+                    if current_total + file_size > MAX_TOTAL_SIZE:
+                        ui.notify(
+                            f'❌ Total upload size would exceed {state.format_size(MAX_TOTAL_SIZE)}. '
+                            f'Current: {state.format_size(current_total)}, File: {state.format_size(file_size)}',
+                            type='warning',
+                            position='top',
+                            timeout=5000
+                        )
+                        return
+
+                    # Save file
                     with open(temp_path, 'wb') as f:
                         f.write(file_data)
+
                     state.uploaded_files.append(temp_path)
-                    logger.info(f"File uploaded: {safe_filename} -> {unique_name}")
-                    ui.notify(f'✓ {safe_filename} uploaded', type='positive')
+                    logger.info(f"File uploaded: {safe_filename} ({state.format_size(file_size)}) -> {unique_name}")
+
+                    ui.notify(
+                        f'✅ {safe_filename} uploaded ({state.format_size(file_size)})',
+                        type='positive',
+                        position='top'
+                    )
                     update_file_display()
+
                 except Exception as ex:
                     logger.error(f"Upload error for {safe_filename}: {ex}", exc_info=True)
-                    ui.notify(f'❌ Upload error: {str(ex)}', type='negative')
+                    ui.notify(
+                        f'❌ Upload failed: {safe_filename} - {str(ex)}',
+                        type='negative',
+                        position='top',
+                        timeout=5000
+                    )
 
             def update_file_display():
                 """Update the file list display"""
                 if file_list_container is None: return
                 file_list_container.clear()
+
+                file_count = len(state.uploaded_files)
+                total_size = state.get_total_size()
+
                 with file_list_container:
                     if not state.uploaded_files:
+                        # Empty state
                         with ui.column().classes('w-full items-center justify-center p-12 gap-3'):
                             ui.icon('cloud_upload', size='xl').classes('text-primary')
                             ui.label('Drag & drop EML files here').classes('text-h6 font-medium text-white')
                             ui.label('or click anywhere to browse').classes('text-sm text-gray-400')
-                            ui.label(f'0 of {MAX_UPLOAD_FILES} files').classes('text-xs text-gray-500 mt-2')
+                            with ui.row().classes('gap-4 mt-3 text-xs text-gray-500'):
+                                ui.label(f'0 of {MAX_UPLOAD_FILES} files')
+                                ui.label('•')
+                                ui.label(f'Max {state.format_size(MAX_FILE_SIZE)} per file')
+                                ui.label('•')
+                                ui.label(f'Max {state.format_size(MAX_TOTAL_SIZE)} total')
                     else:
-                        with ui.column().classes('w-full gap-2 p-4'):
+                        # File list with header showing stats (always visible)
+                        with ui.card().classes('w-full mb-3 bg-blue-900/20 border border-blue-500/20'):
+                            with ui.row().classes('items-center justify-between p-3'):
+                                with ui.row().classes('items-center gap-4'):
+                                    ui.icon('inventory_2', size='sm').classes('text-blue-400')
+                                    ui.label(f'{file_count} of {MAX_UPLOAD_FILES} files').classes('text-sm font-bold text-blue-400')
+                                    ui.label('•').classes('text-gray-600')
+                                    ui.label(f'{state.format_size(total_size)} of {state.format_size(MAX_TOTAL_SIZE)}').classes('text-sm font-bold text-blue-400')
+
+                                # Progress bar for total size
+                                size_percentage = (total_size / MAX_TOTAL_SIZE * 100) if MAX_TOTAL_SIZE > 0 else 0
+                                size_color = 'green' if size_percentage < 70 else 'orange' if size_percentage < 90 else 'red'
+                                with ui.row().classes('items-center gap-2'):
+                                    ui.label(f'{size_percentage:.0f}%').classes(f'text-xs font-mono text-{size_color}-400')
+
+                            # Scroll hint when there are many files
+                            if file_count > 8:
+                                with ui.row().classes('w-full px-3 pb-2 items-center justify-center gap-2'):
+                                    ui.icon('keyboard_arrow_down', size='xs').classes('text-gray-500')
+                                    ui.label('Scroll to see all files').classes('text-xs text-gray-500')
+                                    ui.icon('keyboard_arrow_down', size='xs').classes('text-gray-500')
+
+                        # Scrollable file list container with custom scrollbar
+                        scroll_container = ui.column().classes('w-full gap-2 p-4 overflow-y-auto').style('''
+                            max-height: 400px;
+                            scroll-behavior: smooth;
+                            scrollbar-width: thin;
+                            scrollbar-color: rgba(59, 130, 246, 0.5) transparent;
+                        ''')
+
+                        # Add custom scrollbar styling for webkit browsers
+                        ui.add_head_html('''
+                            <style>
+                            .q-scrollarea__thumb--v {
+                                background: rgba(59, 130, 246, 0.5);
+                                border-radius: 4px;
+                            }
+                            .q-scrollarea__thumb--v:hover {
+                                background: rgba(59, 130, 246, 0.8);
+                            }
+                            /* Webkit scrollbar styling */
+                            .overflow-y-auto::-webkit-scrollbar {
+                                width: 8px;
+                            }
+                            .overflow-y-auto::-webkit-scrollbar-track {
+                                background: transparent;
+                            }
+                            .overflow-y-auto::-webkit-scrollbar-thumb {
+                                background: rgba(59, 130, 246, 0.5);
+                                border-radius: 4px;
+                            }
+                            .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+                                background: rgba(59, 130, 246, 0.8);
+                            }
+                            </style>
+                        ''')
+
+                        with scroll_container:
                             for file_path in state.uploaded_files:
                                 display_name = file_path.name.split('_', 1)[1] if '_' in file_path.name else file_path.name
+
+                                # Get file size
+                                try:
+                                    file_size = file_path.stat().st_size if file_path.exists() else 0
+                                    file_size_str = state.format_size(file_size)
+                                except:
+                                    file_size_str = 'Unknown'
+
                                 def remove_file(f=file_path, n=display_name):
                                     if f in state.uploaded_files:
                                         state.uploaded_files.remove(f)
                                         if f.exists(): f.unlink()
-                                        ui.notify(f'Removed {n}', type='info')
+                                        ui.notify(f'✅ Removed {n}', type='info', position='top')
                                         update_file_display()
-                                
-                                with ui.row().classes('items-center gap-2 p-3 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors'):
+
+                                with ui.row().classes('items-center gap-3 p-3 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors'):
                                     ui.icon('description', size='sm').classes('text-primary flex-shrink-0')
-                                    ui.label(display_name).classes('text-sm text-white flex-1 truncate')
+                                    with ui.column().classes('flex-1 min-w-0'):
+                                        ui.label(display_name).classes('text-sm text-white truncate')
+                                        ui.label(file_size_str).classes('text-xs text-gray-400')
                                     ui.button(icon='close', on_click=remove_file).props('flat dense round size=sm').classes('text-gray-400 hover:text-white')
+
+            def handle_rejected(e):
+                """Handle rejected files with detailed error messages"""
+                if hasattr(e, 'file') and hasattr(e.file, 'name'):
+                    filename = e.file.name
+                    ui.notify(
+                        f'❌ {filename} rejected - File exceeds {state.format_size(MAX_FILE_SIZE)} limit or invalid type (.eml only)',
+                        type='warning',
+                        position='top',
+                        timeout=5000
+                    )
+                else:
+                    ui.notify(
+                        f'❌ File rejected - Maximum size: {state.format_size(MAX_FILE_SIZE)}, accepted type: .eml only',
+                        type='warning',
+                        position='top',
+                        timeout=5000
+                    )
 
             # UI components
             upload_card = ui.card().classes('w-full mb-4 overflow-hidden eml-upload-drop-zone')
             with upload_card:
                 with ui.element('div').classes('relative w-full min-h-[200px]'):
                     file_list_container = ui.column().classes('w-full')
-                    ui.upload(
+                    upload_component = ui.upload(
                         multiple=True, auto_upload=True, max_file_size=MAX_FILE_SIZE,
                         on_upload=handle_upload,
-                        on_rejected=lambda e: ui.notify('File rejected: Too large or invalid type', type='negative')
-                    ).props('accept=.eml').classes('absolute inset-0 w-full h-full opacity-0 cursor-pointer').style('z-index: 10;')
+                        on_rejected=handle_rejected
+                    ).props('accept=.eml').classes('absolute inset-0 w-full h-full opacity-0 cursor-pointer').style('z-index: 10; pointer-events: auto;')
             
             update_file_display()
 
-            # JS for interactions
+            # JS for interactions - Make entire card clickable to trigger file browser
             ui.run_javascript('''
                 (function() {
                     const init = () => {
                         const card = document.querySelector('.eml-upload-drop-zone');
-                        if (!card || card.dataset.clickableInit === 'true') return;
+                        if (!card) {
+                            console.warn('Upload drop zone not found');
+                            return;
+                        }
+
+                        if (card.dataset.clickableInit === 'true') return;
                         card.dataset.clickableInit = 'true';
                         card.style.cursor = 'pointer';
-                        
-                        card.addEventListener('click', (e) => {
-                            if (e.target.closest('button')) return;
-                            const input = card.querySelector('input[type="file"]');
-                            if (input) input.click();
-                        });
-                        
-                        card.addEventListener('dragenter', () => {
+
+                        // Handler to trigger file browser
+                        const triggerFileBrowser = (e) => {
+                            // Don't trigger if clicking on a button (remove file buttons)
+                            if (e.target.closest('button')) {
+                                console.log('Clicked on button, ignoring');
+                                return;
+                            }
+
+                            // Find the file input - try multiple selectors
+                            let input = card.querySelector('input[type="file"]');
+
+                            // Fallback: search in document
+                            if (!input) {
+                                const allInputs = document.querySelectorAll('input[type="file"]');
+                                for (let inp of allInputs) {
+                                    // Check if input is inside our card
+                                    if (card.contains(inp)) {
+                                        input = inp;
+                                        console.log('Found input via document search');
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (input) {
+                                console.log('Triggering file browser');
+                                // Trigger both click and native file picker
+                                input.click();
+                            } else {
+                                console.error('File input not found - DOM structure:', card.innerHTML.substring(0, 200));
+                            }
+                        };
+
+                        // Attach click handler to the card
+                        card.addEventListener('click', triggerFileBrowser);
+
+                        // Visual feedback for drag & drop
+                        card.addEventListener('dragenter', (e) => {
+                            e.preventDefault();
                             card.style.borderColor = 'rgb(59, 130, 246)';
                             card.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
                         });
-                        ['dragleave', 'drop'].forEach(e => {
-                            card.addEventListener(e, () => {
+
+                        card.addEventListener('dragover', (e) => {
+                            e.preventDefault();
+                        });
+
+                        ['dragleave', 'drop'].forEach(eventName => {
+                            card.addEventListener(eventName, () => {
                                 card.style.borderColor = '';
                                 card.style.backgroundColor = '';
                             });
                         });
+
+                        console.log('Upload drop zone initialized successfully');
                     };
+
+                    // Try multiple times as the DOM might not be ready
+                    // NiceGUI components may take time to render
                     init();
+                    setTimeout(init, 100);
+                    setTimeout(init, 500);
                     setTimeout(init, 1000);
+                    setTimeout(init, 2000);
                 })();
             ''')
 
