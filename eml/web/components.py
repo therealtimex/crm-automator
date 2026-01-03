@@ -23,6 +23,21 @@ Design System:
 from nicegui import ui
 from typing import Dict, Any
 from datetime import datetime
+import tomllib
+from pathlib import Path
+
+def get_project_version():
+    """Reads project version from pyproject.toml."""
+    try:
+        # Navigate from eml/web/components.py to project root
+        pyproject_path = Path(__file__).parents[2] / "pyproject.toml"
+        if pyproject_path.exists():
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+                return data.get("project", {}).get("version", "unknown")
+    except Exception:
+        pass
+    return "unknown"
 
 def apply_nexus_theme():
     """Injects Nexus Glass styling overrides."""
@@ -194,8 +209,10 @@ def create_header_with_tabs(dark_mode_handler, active_tab_name: str = 'dashboard
                       </g>
                     </svg>
                 ''', sanitize=False).classes('flex-shrink-0')
-                # App name (hidden on mobile, visible on medium+ screens)
-                ui.label('CRM AUTOMATOR').classes('desktop-only text-sm font-bold tracking-wide text-branding')
+                # App name and version (hidden on mobile, visible on medium+ screens)
+                with ui.row().classes('desktop-only items-baseline gap-2'):
+                    ui.label('CRM AUTOMATOR').classes('text-sm font-bold tracking-wide text-branding')
+                    ui.label(f'v{get_project_version()}').classes('text-[10px] text-tertiary font-medium opacity-70')
                 # Separator visible only on mobile when text is hidden
                 ui.element('div').classes('w-[1px] h-6 bg-white/10 mx-1 md:hidden')
 
