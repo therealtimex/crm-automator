@@ -375,20 +375,24 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
     with ui.tab_panel(dashboard_tab):
         with ui.column().classes('w-full p-6 gap-6'):
             # Stats overview
-            stats = get_database_stats()
-            total = stats['total'] if stats['total'] > 0 else 1
+            @ui.refreshable
+            def stats_cards_ui():
+                stats = get_database_stats()
+                total = stats['total'] if stats['total'] > 0 else 1
 
-            # Calculate percentages
-            processed_pct = (stats['processed'] / total * 100) if total > 0 else 0
-            suppressed_pct = (stats['suppressed'] / total * 100) if total > 0 else 0
-            failed_pct = (stats['failed'] / total * 100) if total > 0 else 0
+                # Calculate percentages
+                processed_pct = (stats['processed'] / total * 100) if total > 0 else 0
+                suppressed_pct = (stats['suppressed'] / total * 100) if total > 0 else 0
+                failed_pct = (stats['failed'] / total * 100) if total > 0 else 0
 
-            # Stat cards
-            with ui.row().classes('w-full gap-4 mb-6'):
-                create_stat_card('TOTAL EMAILS', stats['total'], 'mail', trend='neutral', trend_value='All emails')
-                create_stat_card('PROCESSED', stats['processed'], 'check_circle', trend='up' if stats['processed'] > 0 else 'neutral', trend_value=f"{processed_pct:.0f}% of total")
-                create_stat_card('SUPPRESSED', stats['suppressed'], 'block', trend='neutral', trend_value=f"{suppressed_pct:.0f}% filtered")
-                create_stat_card('FAILED', stats['failed'], 'error', trend='neutral' if stats['failed'] == 0 else 'down', trend_value=f"{failed_pct:.0f}% errors" if stats['failed'] > 0 else '0% errors')
+                # Stat cards
+                with ui.row().classes('w-full gap-4 mb-6'):
+                    create_stat_card('TOTAL EMAILS', stats['total'], 'mail', trend='neutral', trend_value='All emails')
+                    create_stat_card('PROCESSED', stats['processed'], 'check_circle', trend='up' if stats['processed'] > 0 else 'neutral', trend_value=f"{processed_pct:.0f}% of total")
+                    create_stat_card('SUPPRESSED', stats['suppressed'], 'block', trend='neutral', trend_value=f"{suppressed_pct:.0f}% filtered")
+                    create_stat_card('FAILED', stats['failed'], 'error', trend='neutral' if stats['failed'] == 0 else 'down', trend_value=f"{failed_pct:.0f}% errors" if stats['failed'] > 0 else '0% errors')
+
+            stats_cards_ui()
 
             # Recent Activity
             with ui.card().classes('w-full p-0 gap-0'):
@@ -471,7 +475,25 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
 
                 search_input.on('keydown.enter', handle_search)
                 load_activity()
-                ui.timer(5.0, lambda: load_activity(current_page['value'], search_input.value or '') if auto_refresh_enabled['value'] and not modal_is_open['value'] and page_is_visible['value'] else None)
+                
+                # Adaptive Polling Logic
+                last_full_refresh = {'time': datetime.now()}
+                
+                def adaptive_refresh():
+                    if not auto_refresh_enabled['value'] or modal_is_open['value'] or not page_is_visible['value']:
+                        return
+                        
+                    now = datetime.now()
+                    is_active = state.is_processing
+                    seconds_since_refresh = (now - last_full_refresh['time']).total_seconds()
+                    
+                    # 1s refresh when processing, 30s when idle
+                    if is_active or seconds_since_refresh >= 30:
+                        stats_cards_ui.refresh()
+                        load_activity(current_page['value'], search_input.value or '')
+                        last_full_refresh['time'] = now
+
+                ui.timer(1.0, adaptive_refresh)
 
 
 def render_upload_tab(upload_tab, page_is_visible):
