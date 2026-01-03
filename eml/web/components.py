@@ -288,8 +288,8 @@ def create_recent_activity_item(item: Dict[str, Any]):
         if timestamp:
             try:
                 dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                time_str = dt.strftime('%H:%M')
-                ui.label(time_str).classes('text-caption text-tertiary')
+                time_str = dt.strftime('%m/%d %H:%M')
+                ui.label(time_str).classes('w-28 text-right text-caption text-tertiary font-mono')
             except:
                 pass
 

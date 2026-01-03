@@ -437,7 +437,7 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
                                     ui.label('Subject').classes('flex-[2]')
                                     ui.label('Sender').classes('flex-[1]')
                                     ui.label('Status').classes('w-24 text-center')
-                                    ui.label('Time').classes('w-24 text-right')
+                                    ui.label('Time').classes('w-28 text-right')
 
                                 for item in recent_items:
                                     status = item.get('status') or 'skipped'
@@ -446,14 +446,14 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
                                     timestamp = item.get('processing_started_at') or ''
                                     time_str = '-'
                                     if timestamp:
-                                        try: time_str = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).strftime('%H:%M')
+                                        try: time_str = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).strftime('%m/%d %H:%M')
                                         except: pass
 
                                     with ui.row().classes('w-full px-4 py-3 border-b border-black/5 dark:border-white/5 items-center hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer').on('click', lambda i=item: show_processing_detail(i, modal_is_open)):
                                         ui.label(subject[:60] + ('...' if len(subject) > 60 else '')).classes('flex-[2] font-medium text-sm truncate pr-2 text-main')
                                         ui.label(sender[:30] + ('...' if len(sender) > 30 else '')).classes('flex-[1] text-xs text-secondary truncate pr-2')
                                         with ui.element('div').classes('w-24 flex justify-center'): status_badge(status, status)
-                                        ui.label(time_str).classes('w-24 text-right text-xs text-tertiary font-mono')
+                                        ui.label(time_str).classes('w-28 text-right text-xs text-tertiary font-mono')
 
                                 if total_pages > 1:
                                     with ui.row().classes('w-full p-4 justify-center border-t border-white/10'):
