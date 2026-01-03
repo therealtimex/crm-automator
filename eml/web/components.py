@@ -23,21 +23,17 @@ Design System:
 from nicegui import ui
 from typing import Dict, Any
 from datetime import datetime
-import tomllib
-from pathlib import Path
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("crm-automator")
+except PackageNotFoundError:
+    # Fallback to hardcoded version if metadata is unavailable
+    __version__ = "1.5.1"
 
 def get_project_version():
-    """Reads project version from pyproject.toml."""
-    try:
-        # Navigate from eml/web/components.py to project root
-        pyproject_path = Path(__file__).parents[2] / "pyproject.toml"
-        if pyproject_path.exists():
-            with open(pyproject_path, "rb") as f:
-                data = tomllib.load(f)
-                return data.get("project", {}).get("version", "unknown")
-    except Exception:
-        pass
-    return "unknown"
+    """Returns the project version from package metadata."""
+    return __version__
 
 def apply_nexus_theme():
     """Injects Nexus Glass styling overrides."""
