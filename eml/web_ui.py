@@ -476,6 +476,43 @@ def render_upload_tab(upload_tab, page_is_visible):
     """Render the Upload & Process tab content"""
     with ui.tab_panel(upload_tab):
         with ui.column().classes('w-full p-6 gap-4'):
+            # Notification debouncing to prevent "toast flood" when many files are uploaded
+            notification_data = {'success': 0, 'errors': [], 'warnings': []}
+            notification_timer = [None]  # Use a list to make it mutable in nested scopes
+
+            def flush_notifications():
+                if notification_data['success'] > 0:
+                    if notification_data['success'] == 1:
+                        ui.notify('✅ File uploaded successfully', type='positive', position='top')
+                    else:
+                        ui.notify(f'✅ {notification_data["success"]} files uploaded successfully', type='positive', position='top')
+                    notification_data['success'] = 0
+                
+                if notification_data['errors']:
+                    if len(notification_data['errors']) == 1:
+                        ui.notify(f'❌ {notification_data["errors"][0]}', type='negative', position='top', timeout=5000)
+                    else:
+                        ui.notify(f'❌ {len(notification_data["errors"])} errors during upload', type='negative', position='top', timeout=7000)
+                    notification_data['errors'] = []
+
+                if notification_data['warnings']:
+                    if len(notification_data['warnings']) == 1:
+                        ui.notify(f'⚠️ {notification_data["warnings"][0]}', type='warning', position='top', timeout=5000)
+                    else:
+                        ui.notify(f'⚠️ {len(notification_data["warnings"])} warnings during upload', type='warning', position='top', timeout=5000)
+                    notification_data['warnings'] = []
+                
+                notification_timer[0] = None
+
+            def notify_debounced(category, message=None):
+                if category == 'success': notification_data['success'] += 1
+                elif category == 'error': notification_data['errors'].append(message)
+                elif category == 'warning': notification_data['warnings'].append(message)
+                
+                if notification_timer[0]:
+                    notification_timer[0].cancel()
+                notification_timer[0] = ui.timer(0.5, flush_notifications, once=True)
+
             # File list container needs to be defined in this scope
             file_list_container = None
 
@@ -516,29 +553,17 @@ def render_upload_tab(upload_tab, page_is_visible):
 
                 # Validation: File count limit
                 if len(state.uploaded_files) >= MAX_UPLOAD_FILES:
-                    ui.notify(
-                        f'⚠️ Maximum {MAX_UPLOAD_FILES} files allowed. Remove some files first.',
-                        type='warning',
-                        position='top'
-                    )
+                    notify_debounced('warning', f'Maximum {MAX_UPLOAD_FILES} files allowed')
                     return
 
                 # Validation: File type
                 if not file_obj.name.lower().endswith('.eml'):
-                    ui.notify(
-                        f'❌ {safe_filename} - Only .eml files are accepted',
-                        type='warning',
-                        position='top'
-                    )
+                    notify_debounced('warning', f'{safe_filename}: Only .eml files are accepted')
                     return
 
                 # Validation: Duplicate filenames
                 if any((f.name.split('_', 1)[1] if '_' in f.name else f.name) == safe_filename for f in state.uploaded_files):
-                    ui.notify(
-                        f'⚠️ {safe_filename} is already in the upload queue',
-                        type='warning',
-                        position='top'
-                    )
+                    notify_debounced('warning', f'{safe_filename} is already in the queue')
                     return
 
                 unique_name = f"{uuid.uuid4().hex[:8]}_{safe_filename}"
@@ -551,24 +576,13 @@ def render_upload_tab(upload_tab, page_is_visible):
 
                     # Validation: Individual file size
                     if file_size > MAX_FILE_SIZE:
-                        ui.notify(
-                            f'❌ {safe_filename} is too large ({state.format_size(file_size)}). Maximum file size: {state.format_size(MAX_FILE_SIZE)}',
-                            type='warning',
-                            position='top',
-                            timeout=5000
-                        )
+                        notify_debounced('warning', f'{safe_filename} too large (> {state.format_size(MAX_FILE_SIZE)})')
                         return
 
                     # Validation: Total size limit
                     current_total = state.get_total_size()
                     if current_total + file_size > MAX_TOTAL_SIZE:
-                        ui.notify(
-                            f'❌ Total upload size would exceed {state.format_size(MAX_TOTAL_SIZE)}. '
-                            f'Current: {state.format_size(current_total)}, File: {state.format_size(file_size)}',
-                            type='warning',
-                            position='top',
-                            timeout=5000
-                        )
+                        notify_debounced('warning', f'Total size limit exceeded ({state.format_size(MAX_TOTAL_SIZE)})')
                         return
 
                     # Save file
@@ -578,21 +592,12 @@ def render_upload_tab(upload_tab, page_is_visible):
                     state.uploaded_files.append(temp_path)
                     logger.info(f"File uploaded: {safe_filename} ({state.format_size(file_size)}) -> {unique_name}")
 
-                    ui.notify(
-                        f'✅ {safe_filename} uploaded ({state.format_size(file_size)})',
-                        type='positive',
-                        position='top'
-                    )
+                    notify_debounced('success')
                     update_file_display()
 
                 except Exception as ex:
                     logger.error(f"Upload error for {safe_filename}: {ex}", exc_info=True)
-                    ui.notify(
-                        f'❌ Upload failed: {safe_filename} - {str(ex)}',
-                        type='negative',
-                        position='top',
-                        timeout=5000
-                    )
+                    notify_debounced('error', f'Upload failed: {safe_filename}')
 
             def update_file_display():
                 """Update the file list display"""
@@ -674,20 +679,9 @@ def render_upload_tab(upload_tab, page_is_visible):
             def handle_rejected(e):
                 """Handle rejected files with detailed error messages"""
                 if hasattr(e, 'file') and hasattr(e.file, 'name'):
-                    filename = e.file.name
-                    ui.notify(
-                        f'❌ {filename} rejected - File exceeds {state.format_size(MAX_FILE_SIZE)} limit or invalid type (.eml only)',
-                        type='warning',
-                        position='top',
-                        timeout=5000
-                    )
+                    notify_debounced('warning', f'Rejected: {e.file.name}')
                 else:
-                    ui.notify(
-                        f'❌ File rejected - Maximum size: {state.format_size(MAX_FILE_SIZE)}, accepted type: .eml only',
-                        type='warning',
-                        position='top',
-                        timeout=5000
-                    )
+                    notify_debounced('warning', 'Some files were rejected')
 
             # UI components
             upload_card = ui.card().classes('w-full mb-4 overflow-hidden eml-upload-drop-zone')
