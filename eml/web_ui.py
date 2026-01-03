@@ -884,8 +884,63 @@ def render_analytics_tab(analytics_tab):
             date_range_select.on('update:model-value', refresh_analytics_data)
             refresh_analytics_data()
 
+
 def render_config_tab(config_tab):
     """Render the Configuration tab content"""
+    def strip_inline_comment(value: str) -> str:
+        in_single = False
+        in_double = False
+        escaped = False
+        result = []
+        for ch in value:
+            if ch == '\\' and not escaped:
+                escaped = True
+                result.append(ch)
+                continue
+            if ch == "'" and not in_double and not escaped:
+                in_single = not in_single
+            elif ch == '"' and not in_single and not escaped:
+                in_double = not in_double
+            elif ch == '#' and not in_single and not in_double:
+                break
+            result.append(ch)
+            escaped = False
+        return ''.join(result).rstrip()
+
+    def parse_env_text(content: str) -> Dict[str, str]:
+        parsed = {}
+        for line in content.splitlines():
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            if line.lower().startswith('export '):
+                line = line[7:].strip()
+            line = strip_inline_comment(line).strip()
+            if not line or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            key = key.strip()
+            value = value.strip()
+            if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+                value = value[1:-1]
+            parsed[key] = value
+        return parsed
+
+    async def handle_import(e):
+        try:
+            content = await e.file.text()
+            new_cfg = parse_env_text(content)
+            
+            # Update form fields
+            count = 0
+            for k, v in new_cfg.items():
+                if k in form_data:
+                    form_data[k].set_value(v)
+                    count += 1
+            ui.notify(f"Imported {count} settings from file", type='positive')
+        except Exception as ex:
+            ui.notify(f"Failed to parse .env file: {ex}", type='negative')
+
     with ui.tab_panel(config_tab):
         with ui.column().classes('w-full p-6 gap-4'):
             custom_env = app.storage.user.get('env_path')
@@ -895,56 +950,99 @@ def render_config_tab(config_tab):
 
             with ui.row().classes('w-full items-center justify-between mb-2'):
                 ui.label('Configuration').classes('text-h4 font-bold')
-                ui.icon('settings', size='lg').classes('text-primary')
+                with ui.row().classes('gap-2'):
+                    ui.upload(on_upload=handle_import, label='Import .env', auto_upload=True) \
+                        .props('accept=.env,.txt max-files=1 flat dense color=primary icon=file_upload hide-upload-btn hide-upload-progress hide-file-list no-thumbnails') \
+                        .classes('w-40')
+                    ui.icon('settings', size='lg').classes('text-primary')
 
-            # Section helper
             def create_section(title, icon=None):
-                card = ui.card().classes('w-full mb-4')
-                with card: ui.label(title).classes('text-h6 mb-3')
+                card = ui.card().classes('w-full mb-4 bg-white/5 border border-white/10')
+                with card: 
+                    with ui.row().classes('items-center gap-2 mb-3'):
+                        if icon: ui.icon(icon, size='sm').classes('text-primary')
+                        ui.label(title).classes('text-h6')
                 return card
 
-            # CRM Settings
-            with create_section('CRM API Settings'):
+            # 1. CRM Settings
+            with create_section('CRM API Settings', 'cloud'):
                 form_data['CRM_API_BASE_URL'] = ui.input('CRM API Base URL', value=current_config.get('CRM_API_BASE_URL', '')).classes('w-full').props('outlined dense')
                 form_data['CRM_API_KEY'] = ui.input('CRM API Key', value=current_config.get('CRM_API_KEY', ''), password=True, password_toggle_button=True).classes('w-full').props('outlined dense')
-                crm_status = ui.label().classes('mt-2')
-                async def test_crm():
-                    crm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)
-                    res = await asyncio.to_thread(config_manager.test_crm_connection, form_data['CRM_API_KEY'].value, form_data['CRM_API_BASE_URL'].value)
-                    crm_status.text = f"{('✅' if res['success'] else '❌')} {res['message']}"
-                    crm_status.classes('text-positive' if res['success'] else 'text-negative')
-                ui.button('Test Connection', on_click=test_crm, icon='link').props('outline')
+                
+                with ui.row().classes('items-center gap-2 mt-2'):
+                    crm_status = ui.label().classes('text-xs')
+                    async def test_crm():
+                        crm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)
+                        res = await asyncio.to_thread(config_manager.test_crm_connection, form_data['CRM_API_KEY'].value, form_data['CRM_API_BASE_URL'].value)
+                        crm_status.text = f"{('✅' if res['success'] else '❌')} {res['message']}"
+                        crm_status.classes('text-positive' if res['success'] else 'text-negative')
+                    ui.button('Test Connection', on_click=test_crm).props('outline dense text-xs')
 
-            # LLM Settings
-            with create_section('LLM Configuration'):
+            # 2. LLM Settings
+            with create_section('LLM Configuration', 'psychology'):
                 form_data['LLM_BASE_URL'] = ui.input('LLM Base URL', value=current_config.get('LLM_BASE_URL', '')).classes('w-full').props('outlined dense')
                 form_data['LLM_API_KEY'] = ui.input('LLM API Key', value=current_config.get('LLM_API_KEY', ''), password=True, password_toggle_button=True).classes('w-full').props('outlined dense')
                 form_data['LLM_MODEL'] = ui.input('LLM Model', value=current_config.get('LLM_MODEL', 'gpt-4o-mini')).classes('w-full').props('outlined dense')
-                llm_status = ui.label().classes('mt-2')
-                async def test_llm():
-                    llm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)
-                    res = await asyncio.to_thread(config_manager.test_llm_connection, form_data['LLM_API_KEY'].value, form_data['LLM_BASE_URL'].value, form_data['LLM_MODEL'].value)
-                    llm_status.text = f"{('✅' if res['success'] else '❌')} {res['message']}"
-                    llm_status.classes('text-positive' if res['success'] else 'text-negative')
-                ui.button('Test Connection', on_click=test_llm, icon='link').props('outline')
+                
+                with ui.row().classes('items-center gap-2 mt-2'):
+                    llm_status = ui.label().classes('text-xs')
+                    async def test_llm():
+                        llm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)
+                        res = await asyncio.to_thread(config_manager.test_llm_connection, form_data['LLM_API_KEY'].value, form_data['LLM_BASE_URL'].value, form_data['LLM_MODEL'].value)
+                        llm_status.text = f"{('✅' if res['success'] else '❌')} {res['message']}"
+                        llm_status.classes('text-positive' if res['success'] else 'text-negative')
+                    ui.button('Test Connection', on_click=test_llm).props('outline dense text-xs')
 
-            # Filtering Settings
-            with create_section('Email Filtering'):
-                form_data['SUPPRESS_CATEGORIES'] = ui.input('Suppress Categories', value=current_config.get('SUPPRESS_CATEGORIES', 'promotional,newsletter,automated,spam')).classes('w-full').props('outlined dense')
+            # 3. Search Provider Settings
+            with create_section('Search Providers (Optional)', 'search'):
+                ui.label('Comma-separated list (duckduckgo, serper, serpapi)').classes('text-[10px] text-gray-500')
+                form_data['SEARCH_PROVIDERS'] = ui.input('Providers', value=current_config.get('SEARCH_PROVIDERS', 'duckduckgo')).classes('w-full').props('outlined dense')
+                form_data['SERPER_API_KEY'] = ui.input('Serper API Key', value=current_config.get('SERPER_API_KEY', ''), password=True).classes('w-full').props('outlined dense')
+                form_data['SERPAPI_KEY'] = ui.input('SerpAPI Key', value=current_config.get('SERPAPI_KEY', ''), password=True).classes('w-full').props('outlined dense')
+
+            # 4. Internal Staff Filtering
+            with create_section('Internal Staff Filtering', 'person_off'):
+                ui.label('Define who NOT to sync to CRM').classes('text-[10px] text-gray-500')
+                form_data['INTERNAL_DOMAINS'] = ui.input('Internal Domains (e.g. company.com)', value=current_config.get('INTERNAL_DOMAINS', '')).classes('w-full').props('outlined dense')
+                form_data['INTERNAL_EMAILS'] = ui.input('Internal Emails (e.g. staff@gmail.com)', value=current_config.get('INTERNAL_EMAILS', '')).classes('w-full').props('outlined dense')
+
+            # 5. Email Filtering & Logic
+            with create_section('Email Processing Logic', 'filter_alt'):
                 form_data['CLASSIFICATION_STRATEGY'] = ui.select(['heuristic', 'llm', 'hybrid'], value=current_config.get('CLASSIFICATION_STRATEGY', 'hybrid'), label='Strategy').classes('w-full').props('outlined dense')
-                form_data['ALLOWLIST_DOMAINS'] = ui.input('Allowlist Domains', value=current_config.get('ALLOWLIST_DOMAINS', '')).classes('w-full').props('outlined dense')
-                form_data['SUPPRESS_DOMAINS'] = ui.input('Blocklist Domains', value=current_config.get('SUPPRESS_DOMAINS', '')).classes('w-full').props('outlined dense')
+                form_data['CLASSIFICATION_MODEL'] = ui.input('Classification Model Override', value=current_config.get('CLASSIFICATION_MODEL', 'gpt-4o-mini')).classes('w-full').props('outlined dense')
+                form_data['SUPPRESS_CATEGORIES'] = ui.input('Suppress Categories', value=current_config.get('SUPPRESS_CATEGORIES', 'promotional,newsletter,automated,spam')).classes('w-full').props('outlined dense')
+                form_data['ALLOWLIST_DOMAINS'] = ui.input('Force-Process (Allowlist)', value=current_config.get('ALLOWLIST_DOMAINS', '')).classes('w-full').props('outlined dense')
+                form_data['SUPPRESS_DOMAINS'] = ui.input('Force-Suppress (Blocklist)', value=current_config.get('SUPPRESS_DOMAINS', '')).classes('w-full').props('outlined dense')
+                form_data['LOG_SUPPRESSED'] = ui.switch('Log Suppressions to DB', value=current_config.get('LOG_SUPPRESSED', 'true').lower() == 'true').props('dense color=primary')
+
+            # 6. Persistence
+            with create_section('Database Settings', 'storage'):
+                form_data['PERSISTENCE_DB_PATH'] = ui.input('Database Path', value=current_config.get('PERSISTENCE_DB_PATH', 'eml_processing.db')).classes('w-full').props('outlined dense')
 
             async def save_config():
-                cfg = {k: v.value for k, v in form_data.items() if hasattr(v, 'value')}
-                errs = config_manager.validate_config(cfg)
-                if errs: ui.notify(f"Errors: {', '.join(errs)}", type='negative'); return
-                ok, msg = config_manager.save_config(cfg)
-                if ok: ui.notify(msg, type='positive'); load_dotenv(override=True)
-                else: ui.notify(msg, type='negative')
+                # Extract values, handling Switch special case
+                cfg = {}
+                for k, v in form_data.items():
+                    if isinstance(v, ui.switch):
+                        cfg[k] = 'true' if v.value else 'false'
+                    elif hasattr(v, 'value'):
+                        cfg[k] = str(v.value)
 
-            with ui.row().classes('gap-2 mt-4'):
-                ui.button('Save Configuration', on_click=save_config, icon='save').props('color=primary unelevated')
+                errs = config_manager.validate_config(cfg)
+                if errs: 
+                    ui.notify(f"Validation Errors: {', '.join(errs[:3])}...", type='negative')
+                    return
+
+                ok, msg = config_manager.save_config(cfg)
+                if ok: 
+                    ui.notify(msg, type='positive')
+                    # Force reload of environment
+                    load_dotenv(override=True)
+                else: 
+                    ui.notify(msg, type='negative')
+
+            with ui.row().classes('w-full gap-2 mt-4 sticky bottom-0 bg-white/10 p-4 rounded-lg backdrop-blur-md z-10'):
+                ui.button('Apply & Save Changes', on_click=save_config, icon='save').props('color=primary unelevated').classes('flex-1')
 
 def render_suppressed_tab(suppressed_tab, page_is_visible):
     """Render the Suppressed Emails tab content"""
