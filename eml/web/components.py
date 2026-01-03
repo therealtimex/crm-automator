@@ -47,6 +47,9 @@ def apply_nexus_theme():
             
             .text-secondary { color: #374151; }
             .body--dark .text-secondary { color: rgba(255, 255, 255, 0.7); }
+
+            .text-tertiary { color: #6b7280; }
+            .body--dark .text-tertiary { color: rgba(255, 255, 255, 0.55); }
             
             /* --- Top Bar & Header --- */
             .q-header { 
@@ -278,7 +281,7 @@ def create_recent_activity_item(item: Dict[str, Any]):
             sender = item.get('sender', 'Unknown')
             if len(sender) > 40:
                 sender = sender[:40] + '...'
-            ui.label(sender).classes('text-caption text-secondary')
+            ui.label(sender).classes('text-caption text-tertiary')
 
         # Timestamp
         timestamp = item.get('processing_started_at', '')
@@ -286,7 +289,7 @@ def create_recent_activity_item(item: Dict[str, Any]):
             try:
                 dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                 time_str = dt.strftime('%H:%M')
-                ui.label(time_str).classes('text-caption text-secondary')
+                ui.label(time_str).classes('text-caption text-tertiary')
             except:
                 pass
 
