@@ -1000,14 +1000,16 @@ def render_config_tab(config_tab):
                 form_data['CRM_API_BASE_URL'] = ui.input('CRM API Base URL', value=current_config.get('CRM_API_BASE_URL', '')).classes('w-full').props('outlined dense')
                 form_data['CRM_API_KEY'] = ui.input('CRM API Key', value=current_config.get('CRM_API_KEY', ''), password=True, password_toggle_button=True).classes('w-full').props('outlined dense')
                 
-                with ui.row().classes('items-center gap-2 mt-2'):
-                    crm_status = ui.label().classes('text-xs')
-                    async def test_crm():
-                        crm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)
-                        res = await asyncio.to_thread(config_manager.test_crm_connection, form_data['CRM_API_KEY'].value, form_data['CRM_API_BASE_URL'].value)
-                        crm_status.text = f"{('✅' if res['success'] else '❌')} {res['message']}"
-                        crm_status.classes('text-positive' if res['success'] else 'text-negative')
-                    ui.button('Test Connection', on_click=test_crm).props('outline dense text-xs')
+                async def test_crm():
+                    crm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)
+                    res = await asyncio.to_thread(config_manager.test_crm_connection, form_data['CRM_API_KEY'].value, form_data['CRM_API_BASE_URL'].value)
+                    crm_status.text = f"{('✅' if res['success'] else '❌')} {res['message']}"
+                    crm_status.classes('text-positive' if res['success'] else 'text-negative')
+
+                # Test Connection area
+                with ui.column().classes('gap-1 mt-2'):
+                    crm_status = ui.label().classes('text-xs h-4')
+                    ui.button('Test Connection', on_click=test_crm).props('outline dense text-xs').classes('w-40')
 
             # 2. LLM Settings
             with create_section('LLM Configuration', 'psychology'):
@@ -1015,14 +1017,16 @@ def render_config_tab(config_tab):
                 form_data['LLM_API_KEY'] = ui.input('LLM API Key', value=current_config.get('LLM_API_KEY', ''), password=True, password_toggle_button=True).classes('w-full').props('outlined dense')
                 form_data['LLM_MODEL'] = ui.input('LLM Model', value=current_config.get('LLM_MODEL', 'gpt-4o-mini')).classes('w-full').props('outlined dense')
                 
-                with ui.row().classes('items-center gap-2 mt-2'):
-                    llm_status = ui.label().classes('text-xs')
-                    async def test_llm():
-                        llm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)
-                        res = await asyncio.to_thread(config_manager.test_llm_connection, form_data['LLM_API_KEY'].value, form_data['LLM_BASE_URL'].value, form_data['LLM_MODEL'].value)
-                        llm_status.text = f"{('✅' if res['success'] else '❌')} {res['message']}"
-                        llm_status.classes('text-positive' if res['success'] else 'text-negative')
-                    ui.button('Test Connection', on_click=test_llm).props('outline dense text-xs')
+                async def test_llm():
+                    llm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)
+                    res = await asyncio.to_thread(config_manager.test_llm_connection, form_data['LLM_API_KEY'].value, form_data['LLM_BASE_URL'].value, form_data['LLM_MODEL'].value)
+                    llm_status.text = f"{('✅' if res['success'] else '❌')} {res['message']}"
+                    llm_status.classes('text-positive' if res['success'] else 'text-negative')
+
+                # Test Connection area
+                with ui.column().classes('gap-1 mt-2'):
+                    llm_status = ui.label().classes('text-xs h-4')
+                    ui.button('Test Connection', on_click=test_llm).props('outline dense text-xs').classes('w-40')
 
             # 3. Search Provider Settings
             with create_section('Search Providers (Optional)', 'search'):
