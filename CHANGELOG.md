@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.17] - 2026-01-02
+
+### Fixed
+- **Web UI - Drag & Drop**: Fixed issue where upload drop zone would not initialize correctly when switching tabs
+  - Added explicit re-initialization handler on tab change events
+  - Refactored drop zone setup to be accessible globally via `window.initUploadDropZone`
+
 ## [1.9.16] - 2026-01-02
 
 ### Improved

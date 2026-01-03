@@ -699,20 +699,21 @@ def render_upload_tab(upload_tab, page_is_visible):
             # JS for interactions - Make entire card clickable to trigger file browser
             ui.run_javascript(f'''
                 (function() {{
-                    let initialized = false;
                     const uploaderId = {upload_component.id};
 
-                    const setupUploadZone = (card) => {{
+                    window.initUploadDropZone = () => {{
+                        const card = document.querySelector('.eml-upload-drop-zone');
+                        if (!card) {{
+                            return false;
+                        }}
                         if (card.dataset.clickableInit === 'true') {{
-                            return; // Already initialized
+                            return true;
                         }}
 
                         card.dataset.clickableInit = 'true';
                         card.style.cursor = 'pointer';
 
-                        // Handler to trigger file browser
                         const triggerFileBrowser = (e) => {{
-                            // Don't trigger if clicking on a button (remove file buttons)
                             if (e.target.closest('button')) {{
                                 return;
                             }}
@@ -729,10 +730,8 @@ def render_upload_tab(upload_tab, page_is_visible):
                             }}
                         }};
 
-                        // Attach click handler to the card
                         card.addEventListener('click', triggerFileBrowser);
 
-                        // Visual feedback for drag & drop
                         card.addEventListener('dragenter', (e) => {{
                             e.preventDefault();
                             card.style.borderColor = 'rgb(59, 130, 246)';
@@ -751,45 +750,10 @@ def render_upload_tab(upload_tab, page_is_visible):
                         }});
 
                         console.log('✅ Upload drop zone initialized');
-                        initialized = true;
+                        return true;
                     }};
 
-                    const init = () => {{
-                        if (initialized) return;
-
-                        const card = document.querySelector('.eml-upload-drop-zone');
-                        if (card) {{
-                            setupUploadZone(card);
-                        }}
-                    }};
-
-                    // Use MutationObserver to watch for the element being added
-                    const observer = new MutationObserver(() => {{
-                        if (!initialized) {{
-                            init();
-                        }} else {{
-                            observer.disconnect();
-                        }}
-                    }});
-
-                    // Start observing
-                    observer.observe(document.body, {{
-                        childList: true,
-                        subtree: true
-                    }});
-
-                    // Also try immediately and with small delays
-                    init();
-                    setTimeout(init, 100);
-                    setTimeout(init, 500);
-
-                    // Stop observing after 3 seconds to avoid memory leaks
-                    setTimeout(() => {{
-                        observer.disconnect();
-                        if (!initialized) {{
-                            console.warn('⚠️ Upload drop zone not found');
-                        }}
-                    }}, 3000);
+                    window.initUploadDropZone();
                 }})();
             ''')
 
@@ -1022,6 +986,7 @@ def main_page():
     """Main page with tabbed interface"""
     app_dark_mode = apply_nexus_theme()
     tabs, dashboard_tab, upload_tab, analytics_tab, suppressed_tab, config_tab = create_header_with_tabs(app_dark_mode)
+    upload_tab_name = upload_tab.props['name']
 
     page_is_visible = {'value': True}
     modal_is_open = {'value': False}
@@ -1036,6 +1001,12 @@ def main_page():
         page_is_visible['value'] = visible if visible is not None else True
     
     ui.timer(2.0, sync_visibility)
+
+    def handle_tab_change(e):
+        if e.value == upload_tab_name:
+            ui.run_javascript('setTimeout(() => { if (window.initUploadDropZone) { window.initUploadDropZone(); } }, 50);')
+
+    tabs.on_value_change(handle_tab_change)
 
     with ui.tab_panels(tabs, value=dashboard_tab).classes('w-full flex-1 bg-transparent'):
         render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open)
