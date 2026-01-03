@@ -426,7 +426,7 @@ class PersistenceLayer:
             conn.close()
 
     def get_suppression_breakdown(self) -> Dict[str, int]:
-        """Get suppression counts by category."""
+        """Get suppression counts by category, including NULL as its own category."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -434,7 +434,7 @@ class PersistenceLayer:
             cursor.execute("""
                 SELECT suppression_category, COUNT(*) as count
                 FROM processing_log
-                WHERE status = 'suppressed' AND suppression_category IS NOT NULL
+                WHERE status = 'suppressed'
                 GROUP BY suppression_category
                 ORDER BY count DESC
             """)
@@ -622,21 +622,24 @@ class PersistenceLayer:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            query = "SELECT * FROM processing_log WHERE status = 'suppressed'"
+            sql_query = "SELECT * FROM processing_log WHERE status = 'suppressed'"
             params = []
 
             if category and category != "All":
-                query += " AND suppression_category = ?"
-                params.append(category)
+                if category == "__null__":
+                    sql_query += " AND suppression_category IS NULL"
+                else:
+                    sql_query += " AND suppression_category = ?"
+                    params.append(category)
 
             if sender:
-                query += " AND sender LIKE ?"
+                sql_query += " AND sender LIKE ?"
                 params.append(f"%{sender}%")
 
-            query += " ORDER BY processing_started_at DESC LIMIT ? OFFSET ?"
+            sql_query += " ORDER BY processing_started_at DESC LIMIT ? OFFSET ?"
             params.extend([limit, offset])
 
-            cursor.execute(query, params)
+            cursor.execute(sql_query, params)
             results = [dict(row) for row in cursor.fetchall()]
             conn.close()
 

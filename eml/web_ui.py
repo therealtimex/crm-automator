@@ -953,34 +953,89 @@ def render_suppressed_tab(suppressed_tab, page_is_visible):
             auto_refresh = {'value': False}
             last_refresh = {'value': datetime.now()}
 
-            with ui.row().classes('w-full items-center justify-between mb-2'):
-                ui.label('Suppressed Emails').classes('text-h4 font-bold')
-                with ui.row().classes('gap-2 items-center'):
-                    ui.icon('filter_list', size='lg').classes('text-primary')
-                    refresh_indicator = ui.label().classes('text-xs text-gray-500')
-                    ui.timer(1.0, lambda: refresh_indicator.__setattr__('text', f"Updated {(datetime.now() - last_refresh['value']).seconds}s ago" if auto_refresh['value'] else "Auto-refresh disabled"))
-                    ui.switch(value=False, on_change=lambda e: auto_refresh.__setitem__('value', e.value)).props('dense color=primary')
+            tab_state = {'category': 'All'}
+            db = PersistenceLayer()
 
-            search_input = ui.input('Search', placeholder='Search sender or subject...').classes('w-full mb-2')
-            category_select = ui.select(['All', 'promotional', 'newsletter', 'automated', 'spam', 'notification'], value='All', label='Category').classes('mb-4')
-            table_container = ui.column().classes('w-full')
+            @ui.refreshable
+            def chips_ui():
+                try:
+                    stats = db.get_suppression_breakdown()
+                    overall = db.get_processing_stats()
+                    total = overall.get('suppressed', 0)
+                    
+                    with ui.row().classes('gap-1 items-center'):
+                        # 'All' Chip
+                        ui.chip(f"All ({total})", selectable=True, on_click=lambda: (tab_state.__setitem__('category', 'All'), refresh_table())) \
+                            .props('color=primary unelevated shadow-none text-xs') \
+                            .bind_selected_from(tab_state, 'category', backward=lambda v: v == 'All')
+                        
+                        if stats:
+                            for cat, count in sorted(stats.items(), key=lambda x: x[1], reverse=True):
+                                if cat == '':
+                                    continue
+                                category_value = '__null__' if cat is None else cat
+                                category_label = 'null' if cat is None else cat
+                                ui.chip(f"{category_label} ({count})", selectable=True, on_click=lambda c=category_value: (tab_state.__setitem__('category', c), refresh_table())) \
+                                    .props('color=primary unelevated shadow-none text-xs') \
+                                    .bind_selected_from(tab_state, 'category', backward=lambda v, c=category_value: v == c)
+                        elif total > 0:
+                            ui.chip(f"unclassified ({total})", selectable=True, on_click=lambda: (tab_state.__setitem__('category', 'unknown'), refresh_table())) \
+                                .props('color=primary unelevated shadow-none text-xs') \
+                                .bind_selected_from(tab_state, 'category', backward=lambda v: v == 'unknown')
+                except Exception as e:
+                    logger.error(f"Error rendering chips: {e}")
+                    ui.label("Error loading categories").classes('text-xs text-red-400')
 
             def refresh_table():
                 last_refresh['value'] = datetime.now()
-                emails = get_suppressed_emails(limit=100, category=category_select.value if category_select.value != 'All' else None, search=search_input.value)
-                table_container.clear()
-                with table_container:
-                    if emails:
-                        with ui.row().classes('w-full px-4 py-2 border-b border-white/10 text-xs font-bold text-gray-400 uppercase tracking-wider'):
-                            ui.label('Date').classes('w-32'); ui.label('Sender').classes('flex-[1]'); ui.label('Subject').classes('flex-[2]'); ui.label('Category').classes('w-32 text-center')
-                        for e in emails:
-                            with ui.row().classes('w-full px-4 py-3 border-b border-white/5 items-center hover:bg-white/5'):
-                                ui.label(e.get('timestamp', '')[:10]).classes('w-32 text-xs font-mono'); ui.label(e.get('sender', '')[:40]).classes('flex-[1] text-xs truncate'); ui.label(e.get('subject', '')[:50]).classes('flex-[2] font-medium text-sm truncate'); ui.label(e.get('category', 'unknown')).classes('w-32 text-center text-[10px] bg-white/10 rounded-full')
-                    else: ui.label('No suppressed emails found').classes('text-grey-7 italic')
+                
+                try:
+                    # 1. Fetch data for table
+                    category_filter = tab_state['category'] if tab_state['category'] != 'All' else None
+                    emails = get_suppressed_emails(
+                        limit=100, 
+                        category=category_filter, 
+                        search=search_input.value
+                    )
+                    
+                    # 2. Update table
+                    table_container.clear()
+                    with table_container:
+                        if emails:
+                            with ui.row().classes('w-full px-4 py-2 border-b border-white/10 text-xs font-bold text-gray-400 uppercase tracking-wider'):
+                                ui.label('Date').classes('w-32'); ui.label('Sender').classes('flex-[1]'); ui.label('Subject').classes('flex-[2]'); ui.label('Category').classes('w-32 text-center')
+                            for e in emails:
+                                with ui.row().classes('w-full px-4 py-3 border-b border-white/5 items-center hover:bg-white/5'):
+                                    ui.label(e.get('timestamp', '')[:10]).classes('w-32 text-xs font-mono'); ui.label(e.get('sender', '')[:40]).classes('flex-[1] text-xs truncate'); ui.label(e.get('subject', '')[:50]).classes('flex-[2] font-medium text-sm truncate'); ui.label(e.get('category', 'unknown')).classes('w-32 text-center text-[10px] bg-white/10 rounded-full')
+                        else: ui.label('No suppressed emails found').classes('text-grey-7 italic text-center w-full py-10 text-white/40')
+                    
+                    # 3. Refresh Chips
+                    chips_ui.refresh()
 
-            ui.button('Refresh', on_click=refresh_table, icon='refresh').props('color=primary unelevated')
+                except Exception as e:
+                    logger.error(f"Error refreshing suppressed table: {e}", exc_info=True)
+                    ui.notify("Failed to refresh data", type='negative')
+
+            with ui.row().classes('w-full items-center justify-between mb-2'):
+                with ui.row().classes('items-center gap-4'):
+                    ui.label('Suppressed Emails').classes('text-h4 font-bold')
+                    ui.button(on_click=refresh_table, icon='refresh').props('round flat dense color=primary').tooltip('Refresh List')
+                
+                with ui.row().classes('gap-2 items-center'):
+                    ui.icon('sync', size='xs').classes('text-primary' if auto_refresh['value'] else 'text-gray-500')
+                    refresh_indicator = ui.label().classes('text-[10px] text-gray-500 font-mono w-32')
+                    ui.timer(1.0, lambda: refresh_indicator.__setattr__('text', f"Updated {(datetime.now() - last_refresh['value']).seconds}s ago" if auto_refresh['value'] else "Auto-refresh off"))
+                    ui.switch(value=False, on_change=lambda e: auto_refresh.__setitem__('value', e.value)).props('dense color=primary').tooltip('Toggle Auto-refresh')
+
+            search_input = ui.input('Search', placeholder='Search sender or subject...').classes('w-full mb-2').props('outlined dense icon=search')
+            
+            with ui.row().classes('gap-2 mb-4 items-center'):
+                ui.label('Categories:').classes('text-xs text-gray-400 uppercase tracking-wider mr-2')
+                chips_ui()
+
+            table_container = ui.column().classes('w-full bg-white/5 rounded-lg overflow-hidden border border-white/10')
             refresh_table()
-            search_input.on('blur', refresh_table); category_select.on('update:model-value', refresh_table)
+            search_input.on('blur', refresh_table)
             ui.timer(10.0, lambda: refresh_table() if auto_refresh['value'] and page_is_visible['value'] else None)
 
 @ui.page('/')
