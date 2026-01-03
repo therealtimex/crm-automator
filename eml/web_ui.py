@@ -10,17 +10,13 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any
 import asyncio
-import threading
 import logging
 import tempfile
-import sqlite3
 import uuid
-from contextlib import contextmanager
 
 from nicegui import ui, app
 from dotenv import load_dotenv
 import plotly.graph_objects as go
-import plotly.express as px
 
 # Import CRM Automator components
 try:
@@ -53,10 +49,7 @@ MAX_FILE_SIZE = 20_000_000  # 20MB per file
 MAX_UPLOAD_FILES = 50  # Maximum number of files that can be uploaded
 MAX_TOTAL_SIZE = 500_000_000  # 500MB total across all files
 MAX_LOG_LINES = 50
-DEFAULT_LIMIT = 100
-TOP_DOMAINS_LIMIT = 10
 TIMER_INTERVAL = 1.0  # seconds
-HEADER_HEIGHT = 56  # pixels
 
 
 
@@ -66,15 +59,12 @@ from eml.web.components import (
     apply_nexus_theme,
     status_badge,
     create_header_with_tabs,
-    create_stat_card,
-    create_recent_activity_item,
-    create_empty_state
+    create_stat_card
 )
 from eml.web.analytics import (
     AnalyticsEngine,
     get_database_stats,
-    get_suppressed_emails,
-    get_suppression_stats
+    get_suppressed_emails
 )
 from eml.web.config import ConfigManager
 
@@ -489,6 +479,32 @@ def render_upload_tab(upload_tab, page_is_visible):
             # File list container needs to be defined in this scope
             file_list_container = None
 
+            ui.add_head_html('''
+                <style>
+                .q-scrollarea__thumb--v {
+                    background: rgba(59, 130, 246, 0.5);
+                    border-radius: 4px;
+                }
+                .q-scrollarea__thumb--v:hover {
+                    background: rgba(59, 130, 246, 0.8);
+                }
+                /* Webkit scrollbar styling */
+                .overflow-y-auto::-webkit-scrollbar {
+                    width: 8px;
+                }
+                .overflow-y-auto::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .overflow-y-auto::-webkit-scrollbar-thumb {
+                    background: rgba(59, 130, 246, 0.5);
+                    border-radius: 4px;
+                }
+                .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+                    background: rgba(59, 130, 246, 0.8);
+                }
+                </style>
+            ''')
+
             async def handle_upload(e):
                 """Handle file upload with validation and security checks"""
                 if not hasattr(e, 'file'):
@@ -630,33 +646,6 @@ def render_upload_tab(upload_tab, page_is_visible):
                             scrollbar-color: rgba(59, 130, 246, 0.5) transparent;
                         ''')
 
-                        # Add custom scrollbar styling for webkit browsers
-                        ui.add_head_html('''
-                            <style>
-                            .q-scrollarea__thumb--v {
-                                background: rgba(59, 130, 246, 0.5);
-                                border-radius: 4px;
-                            }
-                            .q-scrollarea__thumb--v:hover {
-                                background: rgba(59, 130, 246, 0.8);
-                            }
-                            /* Webkit scrollbar styling */
-                            .overflow-y-auto::-webkit-scrollbar {
-                                width: 8px;
-                            }
-                            .overflow-y-auto::-webkit-scrollbar-track {
-                                background: transparent;
-                            }
-                            .overflow-y-auto::-webkit-scrollbar-thumb {
-                                background: rgba(59, 130, 246, 0.5);
-                                border-radius: 4px;
-                            }
-                            .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-                                background: rgba(59, 130, 246, 0.8);
-                            }
-                            </style>
-                        ''')
-
                         with scroll_container:
                             for file_path in state.uploaded_files:
                                 display_name = file_path.name.split('_', 1)[1] if '_' in file_path.name else file_path.name
@@ -714,84 +703,100 @@ def render_upload_tab(upload_tab, page_is_visible):
             update_file_display()
 
             # JS for interactions - Make entire card clickable to trigger file browser
-            ui.run_javascript('''
-                (function() {
-                    const init = () => {
-                        const card = document.querySelector('.eml-upload-drop-zone');
-                        if (!card) {
-                            console.warn('Upload drop zone not found');
-                            return;
-                        }
+            ui.run_javascript(f'''
+                (function() {{
+                    let initialized = false;
+                    const uploaderId = {upload_component.id};
 
-                        if (card.dataset.clickableInit === 'true') return;
+                    const setupUploadZone = (card) => {{
+                        if (card.dataset.clickableInit === 'true') {{
+                            return; // Already initialized
+                        }}
+
                         card.dataset.clickableInit = 'true';
                         card.style.cursor = 'pointer';
 
                         // Handler to trigger file browser
-                        const triggerFileBrowser = (e) => {
+                        const triggerFileBrowser = (e) => {{
                             // Don't trigger if clicking on a button (remove file buttons)
-                            if (e.target.closest('button')) {
-                                console.log('Clicked on button, ignoring');
+                            if (e.target.closest('button')) {{
                                 return;
-                            }
-
-                            // Find the file input - try multiple selectors
+                            }}
+                            if (typeof runMethod === 'function') {{
+                                runMethod(uploaderId, 'pickFiles', []);
+                                return;
+                            }}
                             let input = card.querySelector('input[type="file"]');
-
-                            // Fallback: search in document
-                            if (!input) {
-                                const allInputs = document.querySelectorAll('input[type="file"]');
-                                for (let inp of allInputs) {
-                                    // Check if input is inside our card
-                                    if (card.contains(inp)) {
-                                        input = inp;
-                                        console.log('Found input via document search');
-                                        break;
-                                    }
-                                }
-                            }
-
-                            if (input) {
-                                console.log('Triggering file browser');
-                                // Trigger both click and native file picker
+                            if (!input) {{
+                                input = document.querySelector('input[type="file"]');
+                            }}
+                            if (input) {{
                                 input.click();
-                            } else {
-                                console.error('File input not found - DOM structure:', card.innerHTML.substring(0, 200));
-                            }
-                        };
+                            }}
+                        }};
 
                         // Attach click handler to the card
                         card.addEventListener('click', triggerFileBrowser);
 
                         // Visual feedback for drag & drop
-                        card.addEventListener('dragenter', (e) => {
+                        card.addEventListener('dragenter', (e) => {{
                             e.preventDefault();
                             card.style.borderColor = 'rgb(59, 130, 246)';
                             card.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
-                        });
+                        }});
 
-                        card.addEventListener('dragover', (e) => {
+                        card.addEventListener('dragover', (e) => {{
                             e.preventDefault();
-                        });
+                        }});
 
-                        ['dragleave', 'drop'].forEach(eventName => {
-                            card.addEventListener(eventName, () => {
+                        ['dragleave', 'drop'].forEach(eventName => {{
+                            card.addEventListener(eventName, () => {{
                                 card.style.borderColor = '';
                                 card.style.backgroundColor = '';
-                            });
-                        });
+                            }});
+                        }});
 
-                        console.log('Upload drop zone initialized successfully');
-                    };
+                        console.log('✅ Upload drop zone initialized');
+                        initialized = true;
+                    }};
 
-                    // Try multiple times as the DOM might not be ready
-                    // NiceGUI components may take time to render
+                    const init = () => {{
+                        if (initialized) return;
+
+                        const card = document.querySelector('.eml-upload-drop-zone');
+                        if (card) {{
+                            setupUploadZone(card);
+                        }}
+                    }};
+
+                    // Use MutationObserver to watch for the element being added
+                    const observer = new MutationObserver(() => {{
+                        if (!initialized) {{
+                            init();
+                        }} else {{
+                            observer.disconnect();
+                        }}
+                    }});
+
+                    // Start observing
+                    observer.observe(document.body, {{
+                        childList: true,
+                        subtree: true
+                    }});
+
+                    // Also try immediately and with small delays
                     init();
                     setTimeout(init, 100);
                     setTimeout(init, 500);
-                    setTimeout(init, 1000);
-                    setTimeout(init, 2000);
-                })();
+
+                    // Stop observing after 3 seconds to avoid memory leaks
+                    setTimeout(() => {{
+                        observer.disconnect();
+                        if (!initialized) {{
+                            console.warn('⚠️ Upload drop zone not found');
+                        }}
+                    }}, 3000);
+                }})();
             ''')
 
             # Options and controls
@@ -836,18 +841,24 @@ def render_upload_tab(upload_tab, page_is_visible):
                 ui.label('LIVE LOGS').classes('text-xs font-bold text-gray-400 mb-2')
                 log_container = ui.column().classes('w-full bg-gray-900 p-4 rounded font-mono text-xs text-gray-300').style('max-height: 400px; overflow-y: auto')
                 displayed_log_count = {'value': 0}
+                window_start = {'value': 0}
 
                 def update_logs():
                     current_log_count = len(state.logs)
                     if current_log_count < displayed_log_count['value']:
                         log_container.clear()
                         displayed_log_count['value'] = 0
-                    logs_to_show = state.logs[-MAX_LOG_LINES:]
-                    new_logs = logs_to_show[displayed_log_count['value']:]
+                        window_start['value'] = 0
+                    new_start = max(0, current_log_count - MAX_LOG_LINES)
+                    if new_start != window_start['value']:
+                        log_container.clear()
+                        window_start['value'] = new_start
+                        displayed_log_count['value'] = new_start
+                    new_logs = state.logs[displayed_log_count['value']:current_log_count]
                     if new_logs:
                         with log_container:
                             for log in new_logs: ui.label(log).classes('font-mono text-sm')
-                        displayed_log_count['value'] = len(logs_to_show)
+                        displayed_log_count['value'] = current_log_count
                         ui.run_javascript(f"const c = document.getElementById('{log_container.id}'); if (c) c.scrollTop = c.scrollHeight;")
 
                 ui.timer(TIMER_INTERVAL, update_logs, active=lambda: state.is_processing and page_is_visible['value'])

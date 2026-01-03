@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.15] - 2026-01-02
+
+### Improved
+- **Web UI**: Enhanced Drag & Drop reliability using MutationObserver and native Quasar file picking
+- **Web UI**: Better Live Logs auto-scrolling and window management
+- **Code Quality**: Removed unused imports and cleaned up code in web_ui.py
+
 ## [1.9.14] - 2026-01-02
 
 ### Added
