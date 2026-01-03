@@ -476,6 +476,49 @@ class PersistenceLayer:
         finally:
             conn.close()
 
+    def get_recent_activity(
+        self,
+        limit: int = 10,
+        offset: int = 0,
+        search_query: Optional[str] = None
+    ) -> tuple[List[Dict[str, Any]], int]:
+        """
+        Get recent activity with search and pagination.
+        Returns (list of items, total count matching search).
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            # Build search condition
+            where_clause = "WHERE 1=1"
+            params = []
+            if search_query:
+                where_clause += " AND (subject LIKE ? OR sender LIKE ? OR recipient LIKE ?)"
+                search_pattern = f"%{search_query}%"
+                params.extend([search_pattern, search_pattern, search_pattern])
+
+            # Get total count for pagination
+            cursor.execute(f"SELECT COUNT(*) FROM processing_log {where_clause}", params)
+            total_count = cursor.fetchone()[0]
+
+            # Get items
+            cursor.execute(f"""
+                SELECT * FROM processing_log
+                {where_clause}
+                ORDER BY processing_started_at DESC
+                LIMIT ? OFFSET ?
+            """, params + [limit, offset])
+
+            items = [dict(row) for row in cursor.fetchall()]
+            return items, total_count
+        except Exception as e:
+            logger.error(f"Failed to get recent activity: {e}")
+            return [], 0
+        finally:
+            conn.close()
+
     def get_top_senders(self, limit: int = 10) -> List[tuple]:
         """Get top senders by email count."""
         conn = sqlite3.connect(self.db_path)
