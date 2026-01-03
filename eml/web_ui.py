@@ -117,12 +117,14 @@ async def process_files_async(files: List[Path], force: bool = False, verbose: b
                     force=force
                 )
 
-                if result:
+                if result == 'success':
                     state.stats["processed"] += 1
                     state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Processed {file_path.name}")
-                else:
+                elif result == 'suppressed':
                     state.stats["suppressed"] += 1
                     state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ⊘ Suppressed {file_path.name}")
+                elif result == 'skipped':
+                    state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ⏭️ Skipped {file_path.name} (already processed)")
 
             except Exception as e:
                 state.stats["failed"] += 1

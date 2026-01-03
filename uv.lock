@@ -662,7 +662,7 @@ wheels = [
 
 [[package]]
 name = "crm-automator"
-version = "1.9.16"
+version = "1.9.17"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },

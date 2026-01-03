@@ -174,7 +174,7 @@ class EMLProcessor:
                 duration_ms = int((time.time() - start_time) * 1000)
                 if log_id:
                     self.db.complete_processing(log_id, status='skipped', processing_duration_ms=duration_ms)
-                return True  # Already processed counts as success
+                return 'skipped'
 
             # === EMAIL FILTERING: Check if email should be processed ===
             # Re-parse for filtering (need Message object for filters)
@@ -207,7 +207,7 @@ class EMLProcessor:
                         suppression_category=decision.category.value if decision.category else None,
                         suppression_reason=decision.reason
                     )
-                return True  # Suppression is successful processing
+                return 'suppressed'
 
             logger.info(f"✓ Processing: {Path(file_path).name} (reason: {decision.reason})")
 
@@ -405,7 +405,7 @@ class EMLProcessor:
                         crm_activities_created=crm_activities_created,
                         ai_summary=ai_summary_dict
                     )
-                return True  # Return True instead of None
+                return 'success'
 
             # primary contact selection
             primary_contact_id = None
@@ -621,7 +621,7 @@ class EMLProcessor:
                 )
 
             logger.info(f"Successfully finished processing for EML.")
-            return True  # Processing successful
+            return 'success'
 
         except Exception as e:
             # Log the error with full traceback
@@ -775,7 +775,7 @@ def main():
             return
 
         # Batch Processing Loop
-        stats = {"success": 0, "failed": 0, "total": len(target_files)}
+        stats = {"success": 0, "suppressed": 0, "skipped": 0, "failed": 0, "total": len(target_files)}
         
         for file_path in tqdm(
             target_files, 
@@ -786,8 +786,13 @@ def main():
         ):
             file_name = os.path.basename(file_path)
             try:
-                processor.process(file_path, force=args.force)
-                stats["success"] += 1
+                res = processor.process(file_path, force=args.force)
+                if res == 'suppressed':
+                    stats["suppressed"] += 1
+                elif res == 'skipped':
+                    stats["skipped"] += 1
+                else:
+                    stats["success"] += 1
             except Exception as e:
                 tqdm.write(f"ERROR: Failed to process {file_name}: {e}")
                 stats["failed"] += 1
@@ -796,6 +801,10 @@ def main():
         logger.info("--- Processing Summary ---")
         logger.info(f"Total Files: {stats['total']}")
         logger.info(f"Successfully Processed: {stats['success']}")
+        if stats['suppressed'] > 0:
+            logger.info(f"Suppressed (Filtered): {stats['suppressed']}")
+        if stats['skipped'] > 0:
+            logger.info(f"Skipped (Already Processed): {stats['skipped']}")
         logger.info(f"Failed: {stats['failed']}")
         logger.info("--------------------------")
 

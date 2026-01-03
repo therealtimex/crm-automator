@@ -618,47 +618,42 @@ class PersistenceLayer:
     ):
         """Legacy method - now queries processing_log."""
         try:
-            filters = {"status": "suppressed"}
-            if category:
-                # Need custom query for suppression_category
-                conn = sqlite3.connect(self.db_path)
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
 
-                query = "SELECT * FROM processing_log WHERE status = 'suppressed'"
-                params = []
+            query = "SELECT * FROM processing_log WHERE status = 'suppressed'"
+            params = []
 
-                if category:
-                    query += " AND suppression_category = ?"
-                    params.append(category)
+            if category and category != "All":
+                query += " AND suppression_category = ?"
+                params.append(category)
 
-                if sender:
-                    query += " AND sender LIKE ?"
-                    params.append(f"%{sender}%")
+            if sender:
+                query += " AND sender LIKE ?"
+                params.append(f"%{sender}%")
 
-                query += " ORDER BY processing_started_at DESC LIMIT ? OFFSET ?"
-                params.extend([limit, offset])
+            query += " ORDER BY processing_started_at DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
 
-                cursor.execute(query, params)
-                results = [dict(row) for row in cursor.fetchall()]
-                conn.close()
+            cursor.execute(query, params)
+            results = [dict(row) for row in cursor.fetchall()]
+            conn.close()
 
-                # Map to legacy format
-                return [{
-                    "id": r["id"],
-                    "timestamp": r["processing_started_at"],
-                    "file_path": r["file_path"],
-                    "file_name": r["file_name"],
-                    "reason": r["suppression_reason"],
-                    "category": r["suppression_category"],
-                    "sender": r["sender"],
-                    "recipient": r["recipient"],
-                    "subject": r["subject"],
-                    "email_date": r["email_date"],
-                    "message_id": r["message_id"]
-                } for r in results]
-            else:
-                return self.get_processing_history(limit=limit, offset=offset, status="suppressed", sender=sender)
+            # Normalize result format: map DB column names to UI expectation
+            return [{
+                "id": r["id"],
+                "timestamp": r["processing_started_at"],
+                "file_path": r["file_path"],
+                "file_name": r["file_name"],
+                "reason": r.get("suppression_reason"),
+                "category": r.get("suppression_category", "unknown"),
+                "sender": r.get("sender"),
+                "recipient": r.get("recipient"),
+                "subject": r.get("subject"),
+                "email_date": r.get("email_date"),
+                "message_id": r.get("message_id")
+            } for r in results]
         except Exception as e:
             logger.error(f"Failed to get suppressed emails: {e}")
             return []
