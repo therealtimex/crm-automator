@@ -851,13 +851,22 @@ def render_analytics_tab(analytics_tab):
     with ui.tab_panel(analytics_tab):
         with ui.column().classes('w-full p-6 gap-4'):
             analytics = AnalyticsEngine()
+            tab_state = {'range': 'Last 30 Days'}
+
             with ui.row().classes('w-full items-center justify-between mb-2'):
                 ui.label('Analytics & Reports').classes('text-h4 font-bold')
                 ui.icon('bar_chart', size='lg').classes('text-primary')
 
-            with ui.row().classes('gap-2 mb-4'):
-                date_range_select = ui.select(['Last 7 Days', 'Last 30 Days', 'Last 90 Days'], value='Last 30 Days', label='Date Range')
-                refresh_button = ui.button('Refresh Data', icon='refresh').props('outline')
+            with ui.row().classes('w-full items-center justify-between gap-2 mb-4'):
+                @ui.refreshable
+                def date_chips():
+                    with ui.row().classes('gap-2'):
+                        for label in ['Last 7 Days', 'Last 30 Days', 'Last 90 Days']:
+                            ui.chip(label, selectable=True, on_click=lambda l=label: (tab_state.__setitem__('range', l), refresh_analytics_data(), date_chips.refresh())) \
+                                .props('color=primary unelevated shadow-none text-xs') \
+                                .bind_selected_from(tab_state, 'range', backward=lambda v, l=label: v == l)
+                date_chips()
+                refresh_button = ui.button('Refresh Data', icon='refresh', on_click=lambda: refresh_analytics_data()).props('flat round color=primary').tooltip('Manually refresh dashboard')
 
             overview_charts_container = ui.row().classes('w-full gap-4 mb-4')
             category_container = ui.card().classes('w-full mb-4')
@@ -881,7 +890,7 @@ def render_analytics_tab(analytics_tab):
                     else: ui.label('No suppression data available yet').classes('text-gray-400 p-4')
 
                 with timeline_container:
-                    days = {'Last 7 Days': 7, 'Last 30 Days': 30, 'Last 90 Days': 90}.get(date_range_select.value, 30)
+                    days = {'Last 7 Days': 7, 'Last 30 Days': 30, 'Last 90 Days': 90}.get(tab_state['range'], 30)
                     time_data = analytics.get_timeline_data(days=days)
                     if time_data['dates']: ui.plotly(analytics.create_timeline_chart(time_data)).classes('w-full')
                     else: ui.label('No timeline data available yet').classes('text-gray-400 p-4')
@@ -902,8 +911,6 @@ def render_analytics_tab(analytics_tab):
                         else: ui.label('No reason data available yet').classes('text-gray-400 p-4')
                 ui.notify('Analytics data refreshed', type='positive')
 
-            refresh_button.on('click', refresh_analytics_data)
-            date_range_select.on('update:model-value', refresh_analytics_data)
             refresh_analytics_data()
 
 
