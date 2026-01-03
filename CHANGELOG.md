@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.14] - 2026-01-02
+
+### Added
+- **Web UI - Drag & Drop**: Implemented drag and drop support for file management
+- **Web UI - File Browser**: Added file browser functionality for better file handling
+
+### Changed
+- **Web UI - Structure**: Restructured the Web UI layout for better organization and usability
+
+### Improved
+- **System**: Applied efficiency optimizations for better performance
+
 ## [1.9.13] - 2026-01-02
 
 ### Fixed
