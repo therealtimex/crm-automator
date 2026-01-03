@@ -14,6 +14,7 @@ import threading
 import logging
 import tempfile
 import sqlite3
+import uuid
 from contextlib import contextmanager
 
 from nicegui import ui, app
@@ -50,6 +51,7 @@ logger = logging.getLogger(__name__)
 # Constants
 MAX_FILE_SIZE = 20_000_000  # 20MB
 MAX_UPLOAD_FILES_DISPLAY = 10
+MAX_UPLOAD_FILES = 50  # Maximum number of files that can be uploaded
 MAX_LOG_LINES = 50
 DEFAULT_LIMIT = 100
 TOP_DOMAINS_LIMIT = 10
@@ -630,55 +632,194 @@ def main_page():
         # ========== UPLOAD TAB ==========
         with ui.tab_panel(upload_tab):
             with ui.column().classes('w-full p-6 gap-4'):
-                # File upload area - Drag & Drop
-                with ui.card().classes('w-full mb-4'):
-                    uploaded_files_list = ui.column().classes('w-full')
+                # File upload area - Drag & Drop (Redesigned)
+                upload_card = ui.card().classes('w-full mb-4 overflow-hidden eml-upload-drop-zone')
+                with upload_card:
+                    # Container wrapper for layering
+                    with ui.element('div').classes('relative w-full min-h-[200px]'):
+                        # Container for file list (this will be cleared/refreshed)
+                        file_list_container = ui.column().classes('w-full')
 
+                        # Persistent upload overlay (NEVER cleared, always on top)
+                        upload_overlay = ui.upload(
+                            multiple=True,
+                            auto_upload=True,
+                            max_file_size=MAX_FILE_SIZE,
+                            on_upload=lambda e: None  # Will be set after handler is defined
+                        ).props('accept=.eml').classes('absolute inset-0 w-full h-full opacity-0 cursor-pointer').style('z-index: 10;')
+
+                    # Define upload handler
                     async def handle_upload(e):
-                        """Handle file upload"""
+                        """Handle file upload with validation and security checks"""
                         # Check for file attribute (files might be rejected if too large)
                         if not hasattr(e, 'file'):
                             logger.warning(f"Upload event missing file. Attributes: {dir(e)}")
-                            ui.notify(f"File could not be processed (possibly rejected/too large).", type='negative')
+                            ui.notify(f'File exceeds 20MB limit or upload failed', type='negative')
                             return
 
-                        # e.file is a FileUpload object which contains name, content etc.
+                        logger.info(f"📁 Upload started: {e.file.name}")
+
+                        # Check file count limit
+                        if len(state.uploaded_files) >= MAX_UPLOAD_FILES:
+                            ui.notify(f'⚠️  Maximum {MAX_UPLOAD_FILES} files allowed. Please clear some files first.', type='warning')
+                            return
+
                         file_obj = e.file
-                        if file_obj.name.endswith('.eml'):
-                            # Save to temp directory (cross-platform)
-                            temp_dir = Path(tempfile.gettempdir())
-                            temp_path = temp_dir / file_obj.name
+
+                        # Validate file extension (case-insensitive)
+                        if not file_obj.name.lower().endswith('.eml'):
+                            ui.notify(f'❌ {file_obj.name} - Only .eml files allowed', type='warning')
+                            logger.warning(f"Rejected non-EML file: {file_obj.name}")
+                            return
+
+                        # Sanitize filename to prevent path traversal attacks
+                        safe_filename = os.path.basename(file_obj.name)
+
+                        # Check for duplicate filenames
+                        if any(f.name.endswith(safe_filename) for f in state.uploaded_files):
+                            ui.notify(f'⚠️  {safe_filename} already uploaded', type='warning')
+                            logger.warning(f"Duplicate file upload attempt: {safe_filename}")
+                            return
+
+                        # Generate unique filename to prevent collisions
+                        unique_name = f"{uuid.uuid4().hex[:8]}_{safe_filename}"
+                        temp_dir = Path(tempfile.gettempdir())
+                        temp_path = temp_dir / unique_name
+
+                        try:
+                            # Read file data asynchronously
+                            file_data = await file_obj.read()
+
+                            # Write to temp file
                             with open(temp_path, 'wb') as f:
-                                # Use async read() method mandated by NiceGUI FileUpload interface
-                                file_data = await file_obj.read()
                                 f.write(file_data)
+
+                            # Add to state
                             state.uploaded_files.append(temp_path)
-                            logger.info(f"Uploaded file saved to: {temp_path}")
+                            logger.info(f"File uploaded: {safe_filename} -> {unique_name}")
 
-                        # Update file list display
-                        uploaded_files_list.clear()
-                        with uploaded_files_list:
-                            ui.label(f'✓ Selected {len(state.uploaded_files)} files').classes('text-positive font-medium mb-3')
-                            for file in state.uploaded_files[:MAX_UPLOAD_FILES_DISPLAY]:
-                                with ui.row().classes('items-center gap-2 p-2 bg-grey-1 rounded'):
-                                    ui.icon('description', size='sm').classes('text-primary')
-                                    ui.label(file.name).classes('text-sm')
-                            if len(state.uploaded_files) > MAX_UPLOAD_FILES_DISPLAY:
-                                ui.label(f'...and {len(state.uploaded_files) - MAX_UPLOAD_FILES_DISPLAY} more').classes('text-caption text-gray-400 mt-2')
+                            # Success notification (BEFORE update_file_display to preserve context)
+                            ui.notify(f'✓ {safe_filename} uploaded', type='positive')
 
-                    # Drag & drop upload area
-                    with ui.column().classes('w-full items-center justify-center p-12 cursor-pointer border-2 border-dashed border-white/20 rounded-xl bg-white/5 hover:bg-white/10 transition-colors'):
-                        ui.icon('cloud_upload', size='xl').classes('text-primary mb-3')
-                        ui.label('Drag & drop EML files here').classes('text-h6 font-medium mb-1 text-white')
-                        ui.label('or click to browse').classes('text-caption text-gray-400 mb-4')
+                            # Refresh display to show new file
+                            update_file_display()
 
-                        upload_element = ui.upload(
-                            on_upload=handle_upload,
-                            multiple=True,
-                            auto_upload=True,
-                            label='Choose Files',
-                            max_file_size=MAX_FILE_SIZE
-                        ).props('accept=.eml color=primary flat').classes('w-full max-w-xs')
+                        except OSError as e:
+                            # OS-level errors (permissions, disk space, etc.)
+                            ui.notify(f'❌ Failed to save {safe_filename}: {e}', type='negative')
+                            logger.error(f"OS error saving file {safe_filename}: {e}", exc_info=True)
+                            return
+                        except Exception as e:
+                            ui.notify(f'❌ Upload error: {str(e)}', type='negative')
+                            logger.error(f"Unexpected upload error for {safe_filename}: {e}", exc_info=True)
+                            return
+
+                    # Connect the handler to the persistent upload overlay
+                    upload_overlay.on_upload = handle_upload
+
+                    def update_file_display():
+                        """Update ONLY the file list (upload overlay remains untouched)"""
+                        file_list_container.clear()
+
+                        with file_list_container:
+                            # File list or empty state
+                            if not state.uploaded_files:
+                                # Empty state - large drop target
+                                with ui.column().classes('w-full items-center justify-center p-12 gap-3'):
+                                    ui.icon('cloud_upload', size='xl').classes('text-primary')
+                                    ui.label('Drag & drop EML files here').classes('text-h6 font-medium text-white')
+                                    ui.label('or click anywhere to browse').classes('text-sm text-gray-400')
+                                    ui.label(f'0 of {MAX_UPLOAD_FILES} files').classes('text-xs text-gray-500 mt-2')
+                            else:
+                                # Filled state - show files
+                                with ui.column().classes('w-full gap-2 p-4'):
+                                    for file in state.uploaded_files:
+                                        # Extract original filename from UUID-prefixed name
+                                        display_name = file.name.split('_', 1)[1] if '_' in file.name else file.name
+
+                                        def remove_file(file_path=file):
+                                            """Remove individual file"""
+                                            try:
+                                                if file_path in state.uploaded_files:
+                                                    state.uploaded_files.remove(file_path)
+                                                    # Clean up temp file
+                                                    if file_path.exists():
+                                                        file_path.unlink()
+                                                    logger.info(f"Removed file: {file_path}")
+                                                    ui.notify(f'Removed {display_name}', type='info')
+                                                    update_file_display()  # Refresh display
+                                            except Exception as e:
+                                                logger.error(f"Error removing file {file_path}: {e}")
+                                                ui.notify(f'Error removing file', type='negative')
+
+                                        with ui.row().classes('items-center gap-2 p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors border border-white/10'):
+                                            ui.icon('description', size='sm').classes('text-primary flex-shrink-0')
+                                            ui.label(display_name).classes('text-sm text-white flex-1 truncate')
+                                            with ui.button(icon='close', on_click=remove_file).props('flat dense round size=sm').classes('text-gray-400 hover:text-white'):
+                                                ui.tooltip('Remove file')
+
+                                    # Capacity indicator and add more button
+                                    with ui.row().classes('items-center justify-between mt-2 pt-2 border-t border-white/10'):
+                                        ui.label(f'{len(state.uploaded_files)} of {MAX_UPLOAD_FILES} files selected').classes('text-xs text-gray-400')
+                                        if len(state.uploaded_files) < MAX_UPLOAD_FILES:
+                                            ui.label('+ Click to add more files').classes('text-xs text-primary')
+
+                    # Initial display
+                    update_file_display()
+
+                    # JavaScript to make entire card clickable
+                    # Drag & drop works natively through the upload element
+                    ui.run_javascript('''
+                        (function() {
+                            function initClickable() {
+                                const card = document.querySelector('.eml-upload-drop-zone');
+                                if (!card) {
+                                    setTimeout(initClickable, 100);
+                                    return;
+                                }
+
+                                // Check if already initialized
+                                if (card.dataset.clickableInit === 'true') {
+                                    return;
+                                }
+
+                                console.log('Making card clickable:', card);
+                                card.dataset.clickableInit = 'true';
+                                card.style.cursor = 'pointer';
+
+                                // Visual feedback on drag over (cosmetic only, upload handles the actual drop)
+                                card.addEventListener('dragenter', () => {
+                                    card.style.borderColor = 'rgb(59, 130, 246)';
+                                    card.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+                                }, false);
+
+                                ['dragleave', 'drop'].forEach(eventName => {
+                                    card.addEventListener(eventName, () => {
+                                        card.style.borderColor = '';
+                                        card.style.backgroundColor = '';
+                                    }, false);
+                                });
+
+                                // Make entire card clickable - find input dynamically
+                                card.addEventListener('click', (e) => {
+                                    // Don't trigger if clicking interactive elements
+                                    if (e.target.closest('button') || e.target.closest('a')) {
+                                        return;
+                                    }
+
+                                    const uploadInput = card.querySelector('input[type="file"]');
+                                    if (uploadInput) {
+                                        console.log('Card clicked, opening file dialog');
+                                        uploadInput.click();
+                                    }
+                                }, false);
+
+                                console.log('✓ Card clickable initialized');
+                            }
+
+                            initClickable();
+                        })();
+                    ''')
 
                 # Processing options
                 with ui.card().classes('w-full mb-4'):
@@ -711,9 +852,23 @@ def main_page():
                          ui.tooltip('Begin processing all uploaded EML files')
 
                     def clear_all_files():
+                        """Clear all uploaded files and clean up temp files"""
+                        # Clean up temp files
+                        for file_path in state.uploaded_files:
+                            try:
+                                if file_path.exists():
+                                    file_path.unlink()
+                                    logger.info(f"Deleted temp file: {file_path}")
+                            except Exception as e:
+                                logger.error(f"Error removing {file_path}: {e}")
+
+                        # Clear state
                         state.uploaded_files.clear()
-                        uploaded_files_list.clear()  # Clear the visual list
-                        upload_element.reset()       # Reset the upload component
+
+                        # Refresh the integrated display
+                        update_file_display()
+
+                        ui.notify('All files cleared', type='info')
 
                     with ui.button('Clear Files',
                              on_click=clear_all_files,
