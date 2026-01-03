@@ -159,12 +159,12 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
 
     with ui.dialog() as dialog, ui.card().classes('w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden p-0'):
         # Header with close button
-        with ui.row().classes('w-full justify-between items-start p-4 border-b border-white/10 shrink-0'):
+        with ui.row().classes('w-full justify-between items-start p-4 border-b border-black/10 dark:border-white/10 shrink-0'):
             with ui.column().classes('flex-1'):
                 subject = log_entry.get('subject', 'No Subject')
-                ui.label(subject).classes('text-xl font-bold text-white mb-2')
+                ui.label(subject).classes('text-xl font-bold text-main mb-2')
 
-                with ui.row().classes('gap-4 text-xs text-gray-400'):
+                with ui.row().classes('gap-4 text-xs text-secondary'):
                     sender = log_entry.get('sender', 'Unknown')
                     ui.label(f"From: {sender}")
 
@@ -185,7 +185,7 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
             ui.button(icon='close', on_click=close_modal).props('flat round').classes('text-gray-400')
 
         # Fixed Tabs (shrink-0 prevents them from growing)
-        with ui.tabs().classes('w-full shrink-0 border-b border-white/5 !h-12 text-gray-400') \
+        with ui.tabs().classes('w-full shrink-0 border-b border-black/5 dark:border-white/5 !h-12 text-secondary') \
             .props('dense no-caps indicator-color="blue-400" active-color="blue-400"') as tabs:
             overview_tab = ui.tab('Overview', icon='info')
             ai_tab = ui.tab('AI Analysis', icon='psychology')
@@ -233,7 +233,7 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
 
                             file_path = log_entry.get('file_path', '')
                             if file_path:
-                                ui.separator().classes('border-white/5 my-2')
+                                ui.separator().classes('border-black/5 dark:border-white/5 my-2')
                                 ui.label('File Path').classes('text-xs text-gray-400 font-bold uppercase mb-1')
                                 ui.label(file_path).classes('text-xs text-indigo-300 font-mono bg-black/20 p-2 rounded break-all')
 
@@ -400,8 +400,8 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
                 last_refresh_time = {'value': datetime.now()}
 
                 # Header
-                with ui.row().classes('p-4 border-b border-white/10 items-center justify-between'):
-                    ui.label('RECENT ACTIVITY').classes('text-sm font-bold tracking-wide text-white')
+                with ui.row().classes('p-4 border-b border-black/10 dark:border-white/10 items-center justify-between'):
+                    ui.label('RECENT ACTIVITY').classes('text-sm font-bold tracking-wide text-main')
                     with ui.row().classes('gap-2 items-center'):
                         refresh_indicator = ui.label().classes('text-xs text-gray-500')
                         def update_refresh_indicator():
@@ -414,7 +414,7 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
                         ui.switch(value=True, on_change=lambda e: auto_refresh_enabled.__setitem__('value', e.value)).props('dense color=primary').classes('ml-2').tooltip('Toggle auto-refresh (5s interval)')
 
                 # Search
-                with ui.row().classes('px-4 py-3 gap-2 border-b border-white/10'):
+                with ui.row().classes('px-4 py-3 gap-2 border-b border-black/10 dark:border-white/10'):
                     search_input = ui.input('Search emails...', on_change=lambda: handle_search()).props('outlined dense debounce="500" clearable').classes('flex-1')
 
                 # Activity List
@@ -433,7 +433,7 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
 
                         with activity_container:
                             if recent_items:
-                                with ui.row().classes('w-full px-4 py-2 border-b border-white/10 text-xs font-bold text-gray-400 uppercase tracking-wider'):
+                                with ui.row().classes('w-full px-4 py-2 border-b border-black/10 dark:border-white/10 text-xs font-bold text-secondary uppercase tracking-wider'):
                                     ui.label('Subject').classes('flex-[2]')
                                     ui.label('Sender').classes('flex-[1]')
                                     ui.label('Status').classes('w-24 text-center')
@@ -449,8 +449,8 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
                                         try: time_str = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).strftime('%H:%M')
                                         except: pass
 
-                                    with ui.row().classes('w-full px-4 py-3 border-b border-white/5 items-center hover:bg-white/5 transition-colors cursor-pointer').on('click', lambda i=item: show_processing_detail(i, modal_is_open)):
-                                        ui.label(subject[:60] + ('...' if len(subject) > 60 else '')).classes('flex-[2] font-medium text-sm truncate pr-2 text-white')
+                                    with ui.row().classes('w-full px-4 py-3 border-b border-black/5 dark:border-white/5 items-center hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer').on('click', lambda i=item: show_processing_detail(i, modal_is_open)):
+                                        ui.label(subject[:60] + ('...' if len(subject) > 60 else '')).classes('flex-[2] font-medium text-sm truncate pr-2 text-main')
                                         ui.label(sender[:30] + ('...' if len(sender) > 30 else '')).classes('flex-[1] text-xs text-gray-400 truncate pr-2')
                                         with ui.element('div').classes('w-24 flex justify-center'): status_badge(status, status)
                                         ui.label(time_str).classes('w-24 text-right text-xs text-gray-500 font-mono')
@@ -636,7 +636,7 @@ def render_upload_tab(upload_tab, page_is_visible):
                         # Empty state
                         with ui.column().classes('w-full items-center justify-center p-12 gap-3'):
                             ui.icon('cloud_upload', size='xl').classes('text-primary')
-                            ui.label('Drag & drop EML files here').classes('text-h6 font-medium text-white')
+                            ui.label('Drag & drop EML files here').classes('text-h6 font-medium text-main')
                             ui.label('or click anywhere to browse').classes('text-sm text-gray-400')
                             with ui.row().classes('gap-4 mt-3 text-xs text-gray-500'):
                                 ui.label(f'0 of {MAX_UPLOAD_FILES} files')
@@ -693,12 +693,12 @@ def render_upload_tab(upload_tab, page_is_visible):
                                         ui.notify(f'✅ Removed {n}', type='info', position='top')
                                         update_file_display()
 
-                                with ui.row().classes('items-center gap-3 p-3 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors'):
+                                with ui.row().classes('items-center gap-3 p-3 bg-black/5 dark:bg-white/5 rounded-lg border border-black/10 dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10 transition-colors'):
                                     ui.icon('description', size='sm').classes('text-primary flex-shrink-0')
                                     with ui.column().classes('flex-1 min-w-0'):
-                                        ui.label(display_name).classes('text-sm text-white truncate')
+                                        ui.label(display_name).classes('text-sm text-main truncate')
                                         ui.label(file_size_str).classes('text-xs text-gray-400')
-                                    ui.button(icon='close', on_click=remove_file).props('flat dense round size=sm').classes('text-gray-400 hover:text-white')
+                                    ui.button(icon='close', on_click=remove_file).props('flat dense round size=sm').classes('text-secondary hover:text-main')
 
             def handle_rejected(e):
                 """Handle rejected files with detailed error messages"""
@@ -988,7 +988,7 @@ def render_config_tab(config_tab):
                     ui.icon('settings', size='lg').classes('text-primary')
 
             def create_section(title, icon=None):
-                card = ui.card().classes('w-full mb-4 bg-white/5 border border-white/10')
+                card = ui.card().classes('w-full mb-4 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10')
                 with card: 
                     with ui.row().classes('items-center gap-2 mb-3'):
                         if icon: ui.icon(icon, size='sm').classes('text-primary')
@@ -1131,12 +1131,15 @@ def render_suppressed_tab(suppressed_tab, page_is_visible):
                     table_container.clear()
                     with table_container:
                         if emails:
-                            with ui.row().classes('w-full px-4 py-2 border-b border-white/10 text-xs font-bold text-gray-400 uppercase tracking-wider'):
+                            with ui.row().classes('w-full px-4 py-2 border-b border-black/10 dark:border-white/10 text-xs font-bold text-secondary uppercase tracking-wider'):
                                 ui.label('Date').classes('w-32'); ui.label('Sender').classes('flex-[1]'); ui.label('Subject').classes('flex-[2]'); ui.label('Category').classes('w-32 text-center')
                             for e in emails:
-                                with ui.row().classes('w-full px-4 py-3 border-b border-white/5 items-center hover:bg-white/5'):
-                                    ui.label(e.get('timestamp', '')[:10]).classes('w-32 text-xs font-mono'); ui.label(e.get('sender', '')[:40]).classes('flex-[1] text-xs truncate'); ui.label(e.get('subject', '')[:50]).classes('flex-[2] font-medium text-sm truncate'); ui.label(e.get('category', 'unknown')).classes('w-32 text-center text-[10px] bg-white/10 rounded-full')
-                        else: ui.label('No suppressed emails found').classes('text-grey-7 italic text-center w-full py-10 text-white/40')
+                                with ui.row().classes('w-full px-4 py-3 border-b border-black/5 dark:border-white/5 items-center hover:bg-black/5 dark:hover:bg-white/5 transition-colors'):
+                                    ui.label(e.get('timestamp', '')[:10]).classes('w-32 text-xs font-mono text-secondary')
+                                    ui.label(e.get('sender', '')[:40]).classes('flex-[1] text-xs truncate text-secondary')
+                                    ui.label(e.get('subject', '')[:50]).classes('flex-[2] font-medium text-sm truncate text-main')
+                                    ui.label(e.get('category', 'unknown')).classes('w-32 text-center text-[10px] bg-black/10 dark:bg-white/10 rounded-full text-secondary')
+                        else: ui.label('No suppressed emails found').classes('text-secondary italic text-center w-full py-10 opacity-70')
                     
                     # 3. Refresh Chips
                     chips_ui.refresh()
@@ -1151,8 +1154,8 @@ def render_suppressed_tab(suppressed_tab, page_is_visible):
                     ui.button(on_click=refresh_table, icon='refresh').props('round flat dense color=primary').tooltip('Refresh List')
                 
                 with ui.row().classes('gap-2 items-center'):
-                    ui.icon('sync', size='xs').classes('text-primary' if auto_refresh['value'] else 'text-gray-500')
-                    refresh_indicator = ui.label().classes('text-[10px] text-gray-500 font-mono w-32')
+                    ui.icon('sync', size='xs').classes('text-primary' if auto_refresh['value'] else 'text-secondary')
+                    refresh_indicator = ui.label().classes('text-[10px] text-secondary font-mono w-32')
                     ui.timer(1.0, lambda: refresh_indicator.__setattr__('text', f"Updated {(datetime.now() - last_refresh['value']).seconds}s ago" if auto_refresh['value'] else "Auto-refresh off"))
                     ui.switch(value=False, on_change=lambda e: auto_refresh.__setitem__('value', e.value)).props('dense color=primary').tooltip('Toggle Auto-refresh')
 
@@ -1161,10 +1164,10 @@ def render_suppressed_tab(suppressed_tab, page_is_visible):
                 .props('outlined dense icon=search debounce="400" clearable')
             
             with ui.row().classes('gap-2 mb-4 items-center'):
-                ui.label('Categories:').classes('text-xs text-gray-400 uppercase tracking-wider mr-2')
+                ui.label('Categories:').classes('text-xs text-secondary uppercase tracking-wider mr-2')
                 chips_ui()
 
-            table_container = ui.column().classes('w-full bg-white/5 rounded-lg overflow-hidden border border-white/10')
+            table_container = ui.column().classes('w-full bg-black/5 dark:bg-white/5 rounded-lg overflow-hidden border border-black/10 dark:border-white/10')
             refresh_table()
             search_input.on('keydown.enter', refresh_table)
             search_input.on('blur', refresh_table)

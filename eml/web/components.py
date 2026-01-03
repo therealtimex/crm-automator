@@ -36,6 +36,17 @@ def apply_nexus_theme():
                 background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%); 
                 min-height: 100vh; 
             }
+            .body--light .nicegui-content { 
+                background: #f8fafc; 
+                min-height: 100vh; 
+            }
+            
+            /* --- Adaptive Text --- */
+            .text-main { color: #1f2937; }
+            .body--dark .text-main { color: rgba(255, 255, 255, 0.9); }
+            
+            .text-secondary { color: #4b5563; }
+            .body--dark .text-secondary { color: rgba(255, 255, 255, 0.5); }
             
             /* --- Top Bar & Header --- */
             .q-header { 
@@ -61,8 +72,8 @@ def apply_nexus_theme():
             /* --- Clean Cards Override (Light) --- */
             .body--light .q-card {
                 background: #ffffff !important;
-                border: 1px solid rgba(0, 0, 0, 0.1);
-                box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+                border: 1px solid rgba(0, 0, 0, 0.08);
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
             }
             
             /* --- Responsive Header & Branding --- */
@@ -216,8 +227,8 @@ def create_stat_card(title: str, value: int, icon: str = None, color: str = None
     with ui.card().classes('flex-1 p-4'):
         with ui.row().classes('w-full justify-between items-start'):
             with ui.column().classes('gap-1'):
-                ui.label(title).classes('text-xs text-gray-400 uppercase tracking-wider mb-1')
-                ui.label(str(value)).classes('text-3xl font-bold text-white')
+                ui.label(title).classes('text-xs text-secondary uppercase tracking-wider mb-1')
+                ui.label(str(value)).classes('text-3xl font-bold text-main')
 
                 if trend and trend_value:
                     # Map trend to color and icon
@@ -233,7 +244,7 @@ def create_stat_card(title: str, value: int, icon: str = None, color: str = None
                         ui.label(trend_value).classes(f'text-xs {trend_color}')
 
             if icon:
-                ui.icon(icon, size='md').classes('text-white/20')
+                ui.icon(icon, size='md').classes('text-primary/20 dark:text-white/20')
 
 def create_recent_activity_item(item: Dict[str, Any]):
     """Create a recent activity item"""
