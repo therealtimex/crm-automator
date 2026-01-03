@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.19] - 2026-01-02
+
+### Added
+- **Web UI - Configuration**: Added support for importing `.env` configuration files directly in the UI
+- **Web UI - Configuration**: Expanded settings with dedicated sections for:
+  - **Search Providers**: Configure DuckDuckGo, Serper, and SerpAPI
+  - **Internal Staff Filtering**: Define internal domains and emails to exclude from CRM sync
+  - **Processing Logic**: Fine-tune classification models and suppression logging
+  - **Database**: Custom persistence path configuration
+
+### Improved
+- **Web UI - UX**: Enhanced configuration tab layout with collapsible sections, icons, and a sticky "Apply & Save" button for better usability
+
 ## [1.9.18] - 2026-01-02
 
 ### Fixed
