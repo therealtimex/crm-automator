@@ -1027,7 +1027,9 @@ def render_suppressed_tab(suppressed_tab, page_is_visible):
                     ui.timer(1.0, lambda: refresh_indicator.__setattr__('text', f"Updated {(datetime.now() - last_refresh['value']).seconds}s ago" if auto_refresh['value'] else "Auto-refresh off"))
                     ui.switch(value=False, on_change=lambda e: auto_refresh.__setitem__('value', e.value)).props('dense color=primary').tooltip('Toggle Auto-refresh')
 
-            search_input = ui.input('Search', placeholder='Search sender or subject...').classes('w-full mb-2').props('outlined dense icon=search')
+            search_input = ui.input('Search', placeholder='Search sender or subject...', on_change=refresh_table) \
+                .classes('w-full mb-2') \
+                .props('outlined dense icon=search debounce="400" clearable')
             
             with ui.row().classes('gap-2 mb-4 items-center'):
                 ui.label('Categories:').classes('text-xs text-gray-400 uppercase tracking-wider mr-2')
@@ -1035,6 +1037,7 @@ def render_suppressed_tab(suppressed_tab, page_is_visible):
 
             table_container = ui.column().classes('w-full bg-white/5 rounded-lg overflow-hidden border border-white/10')
             refresh_table()
+            search_input.on('keydown.enter', refresh_table)
             search_input.on('blur', refresh_table)
             ui.timer(10.0, lambda: refresh_table() if auto_refresh['value'] and page_is_visible['value'] else None)
 

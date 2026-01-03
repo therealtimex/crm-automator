@@ -633,8 +633,8 @@ class PersistenceLayer:
                     params.append(category)
 
             if sender:
-                sql_query += " AND sender LIKE ?"
-                params.append(f"%{sender}%")
+                sql_query += " AND (sender LIKE ? OR subject LIKE ?)"
+                params.extend([f"%{sender}%", f"%{sender}%"])
 
             sql_query += " ORDER BY processing_started_at DESC LIMIT ? OFFSET ?"
             params.extend([limit, offset])
