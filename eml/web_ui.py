@@ -16,7 +16,6 @@ import uuid
 
 from nicegui import ui, app
 from dotenv import load_dotenv
-import plotly.graph_objects as go
 
 # Import CRM Automator components
 try:
@@ -253,12 +252,20 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
                                 try:
                                     import json
                                     summary_data = json.loads(ai_summary)
-                                    ui.json_editor({'content': {'json': summary_data}}).classes('w-full')
+                                    with ui.column().classes('w-full p-2 overflow-auto max-h-96'):
+                                        try:
+                                            ui.json_editor({'content': {'json': summary_data}}).classes('w-full')
+                                        except:
+                                            ui.code(json.dumps(summary_data, indent=2)).classes('w-full text-xs')
                                 except:
                                     # Fallback if ai_summary is already a dict-like object (Pydantic model)
                                     if hasattr(ai_summary, 'model_dump') or hasattr(ai_summary, 'dict'):
                                         data = ai_summary.model_dump() if hasattr(ai_summary, 'model_dump') else ai_summary.dict()
-                                        ui.json_editor({'content': {'json': data}}).classes('w-full')
+                                        with ui.column().classes('w-full p-2 overflow-auto max-h-96'):
+                                            try:
+                                                ui.json_editor({'content': {'json': data}}).classes('w-full')
+                                            except:
+                                                ui.code(json.dumps(data, indent=2)).classes('w-full text-xs')
                                     else:
                                         ui.label(str(ai_summary)).classes('text-sm text-gray-300 leading-relaxed whitespace-pre-wrap')
 
@@ -323,7 +330,12 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
                                     try:
                                         import json
                                         data = json.loads(payload_json)
-                                        ui.json_editor({'content': {'json': data}}).classes('w-full')
+                                        # Use a container to prevent direct updates if component is destroyed
+                                        with ui.column().classes('w-full p-2 overflow-auto max-h-64'):
+                                            try:
+                                                ui.json_editor({'content': {'json': data}}).classes('w-full')
+                                            except:
+                                                ui.code(json.dumps(data, indent=2)).classes('w-full text-xs')
                                     except:
                                         ui.label(str(payload_json)).classes('text-xs font-mono whitespace-pre-wrap p-2')
                             elif count > 0:
@@ -851,72 +863,7 @@ def render_upload_tab(upload_tab, page_is_visible):
                 ui.timer(TIMER_INTERVAL, update_logs, active=lambda: state.is_processing and page_is_visible['value'])
 
 
-def render_analytics_tab(analytics_tab):
-    """Render the Analytics tab content"""
-    with ui.tab_panel(analytics_tab):
-        with ui.column().classes('w-full p-6 gap-4'):
-            analytics = AnalyticsEngine()
-            tab_state = {'range': 'Last 30 Days'}
 
-            with ui.row().classes('w-full items-center justify-between mb-2'):
-                ui.label('Analytics & Reports').classes('text-h4 font-bold')
-                ui.icon('bar_chart', size='lg').classes('text-primary')
-
-            with ui.row().classes('w-full items-center justify-between gap-2 mb-4'):
-                @ui.refreshable
-                def date_chips():
-                    with ui.row().classes('gap-2'):
-                        for label in ['Last 7 Days', 'Last 30 Days', 'Last 90 Days']:
-                            ui.chip(label, selectable=True, on_click=lambda l=label: (tab_state.__setitem__('range', l), refresh_analytics_data(), date_chips.refresh())) \
-                                .props('color=primary unelevated shadow-none text-xs') \
-                                .bind_selected_from(tab_state, 'range', backward=lambda v, l=label: v == l)
-                date_chips()
-                refresh_button = ui.button('Refresh Data', icon='refresh', on_click=lambda: refresh_analytics_data()).props('flat round color=primary').tooltip('Manually refresh dashboard')
-
-            overview_charts_container = ui.row().classes('w-full gap-4 mb-4')
-            category_container = ui.card().classes('w-full mb-4')
-            timeline_container = ui.card().classes('w-full mb-4')
-            bottom_charts_container = ui.row().classes('w-full gap-4')
-
-            def refresh_analytics_data():
-                overview_charts_container.clear()
-                category_container.clear()
-                timeline_container.clear()
-                bottom_charts_container.clear()
-
-                with overview_charts_container:
-                    stats = analytics.get_processing_stats()
-                    with ui.card().classes('flex-1'): ui.plotly(analytics.create_processing_pie_chart(stats)).classes('w-full')
-                    with ui.card().classes('flex-1'): ui.plotly(analytics.create_success_gauge_chart(stats)).classes('w-full')
-
-                with category_container:
-                    cat_data = analytics.get_suppression_breakdown()
-                    if cat_data: ui.plotly(analytics.create_category_bar_chart(cat_data)).classes('w-full')
-                    else: ui.label('No suppression data available yet').classes('text-tertiary p-4')
-
-                with timeline_container:
-                    days = {'Last 7 Days': 7, 'Last 30 Days': 30, 'Last 90 Days': 90}.get(tab_state['range'], 30)
-                    time_data = analytics.get_timeline_data(days=days)
-                    if time_data['dates']: ui.plotly(analytics.create_timeline_chart(time_data)).classes('w-full')
-                    else: ui.label('No timeline data available yet').classes('text-tertiary p-4')
-
-                with bottom_charts_container:
-                    with ui.card().classes('flex-1'):
-                        top_domains = analytics.get_top_suppressed_domains(limit=10)
-                        if top_domains: ui.plotly(analytics.create_top_domains_chart(top_domains)).classes('w-full')
-                        else: ui.label('No suppression data available yet').classes('text-tertiary p-4')
-                    with ui.card().classes('flex-1'):
-                        reason_data = analytics.get_reason_breakdown()
-                        if reason_data:
-                            ui.label('Suppression by Reason').classes('text-h6 mb-2')
-                            reasons, counts = list(reason_data.keys()), list(reason_data.values())
-                            reason_fig = go.Figure(data=[go.Bar(x=counts, y=reasons, orientation='h', marker=dict(color='#9C27B0'), text=counts, textposition='outside')])
-                            reason_fig.update_layout(title='Top 10 Suppression Reasons', height=max(300, len(reasons) * 30), margin=dict(t=40, b=40, l=200, r=40))
-                            ui.plotly(reason_fig).classes('w-full')
-                        else: ui.label('No reason data available yet').classes('text-tertiary p-4')
-                ui.notify('Analytics data refreshed', type='positive')
-
-            refresh_analytics_data()
 
 
 def render_config_tab(config_tab):
@@ -992,76 +939,77 @@ def render_config_tab(config_tab):
                         .props('flat color=primary').classes('h-9 min-h-9 px-3')
                     ui.icon('settings', size='lg').classes('text-primary')
 
-            def create_section(title, icon=None):
-                card = ui.card().classes('w-full mb-4 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10')
-                with card: 
-                    with ui.row().classes('items-center gap-2 mb-3'):
-                        if icon: ui.icon(icon, size='sm').classes('text-primary')
-                        ui.label(title).classes('text-h6')
-                return card
+            with ui.element('form').classes('w-full'):
+                def create_section(title, icon=None):
+                    card = ui.card().classes('w-full mb-4 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10')
+                    with card: 
+                        with ui.row().classes('items-center gap-2 mb-3'):
+                            if icon: ui.icon(icon, size='sm').classes('text-primary')
+                            ui.label(title).classes('text-h6')
+                    return card
 
-            # 1. CRM Settings
-            with create_section('CRM API Settings', 'cloud'):
-                form_data['CRM_API_BASE_URL'] = ui.input('CRM API Base URL', value=current_config.get('CRM_API_BASE_URL', '')).classes('w-full').props('outlined dense')
-                form_data['CRM_API_KEY'] = ui.input('CRM API Key', value=current_config.get('CRM_API_KEY', ''), password=True, password_toggle_button=True).classes('w-full').props('outlined dense')
-                
-                async def test_crm():
-                    crm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)
-                    res = await asyncio.to_thread(config_manager.test_crm_connection, form_data['CRM_API_KEY'].value, form_data['CRM_API_BASE_URL'].value)
-                    crm_status.text = f"{('✅' if res['success'] else '❌')} {res['message']}"
-                    crm_status.classes('text-positive' if res['success'] else 'text-negative')
+                # 1. CRM Settings
+                with create_section('CRM API Settings', 'cloud'):
+                    form_data['CRM_API_BASE_URL'] = ui.input('CRM API Base URL', value=current_config.get('CRM_API_BASE_URL', '')).classes('w-full').props('outlined dense')
+                    form_data['CRM_API_KEY'] = ui.input('CRM API Key', value=current_config.get('CRM_API_KEY', ''), password=True, password_toggle_button=True).classes('w-full').props('outlined dense autocomplete="on"')
+                    
+                    async def test_crm():
+                        crm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)
+                        res = await asyncio.to_thread(config_manager.test_crm_connection, form_data['CRM_API_KEY'].value, form_data['CRM_API_BASE_URL'].value)
+                        crm_status.text = f"{('✅' if res['success'] else '❌')} {res['message']}"
+                        crm_status.classes('text-positive' if res['success'] else 'text-negative')
 
-                # Test Connection area
-                with ui.column().classes('gap-1 mt-2'):
-                    crm_status = ui.label().classes('text-xs h-4')
-                    ui.button('Test Connection', on_click=test_crm).props('outline dense text-xs').classes('w-40')
+                    # Test Connection area
+                    with ui.column().classes('gap-1 mt-2'):
+                        crm_status = ui.label().classes('text-xs h-4')
+                        ui.button('Test Connection', on_click=test_crm).props('outline dense text-xs').classes('w-40')
 
-            # 2. LLM Settings
-            with create_section('LLM Configuration', 'psychology'):
-                form_data['LLM_BASE_URL'] = ui.input('LLM Base URL', value=current_config.get('LLM_BASE_URL', '')).classes('w-full').props('outlined dense')
-                form_data['LLM_API_KEY'] = ui.input('LLM API Key', value=current_config.get('LLM_API_KEY', ''), password=True, password_toggle_button=True).classes('w-full').props('outlined dense')
-                form_data['LLM_MODEL'] = ui.input('LLM Model', value=current_config.get('LLM_MODEL', 'gpt-4o-mini')).classes('w-full').props('outlined dense')
-                
-                with ui.row().classes('w-full gap-4'):
-                    form_data['LLM_MAX_TOKENS'] = ui.input('Max Tokens', value=current_config.get('LLM_MAX_TOKENS', '4096')).classes('flex-1').props('outlined dense type="number"')
-                    form_data['LLM_TEMPERATURE'] = ui.input('Temperature', value=current_config.get('LLM_TEMPERATURE', '0.1')).classes('flex-1').props('outlined dense type="number" step="0.1" min="0" max="2"')
-                
-                async def test_llm():
-                    llm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)
-                    res = await asyncio.to_thread(config_manager.test_llm_connection, form_data['LLM_API_KEY'].value, form_data['LLM_BASE_URL'].value, form_data['LLM_MODEL'].value)
-                    llm_status.text = f"{('✅' if res['success'] else '❌')} {res['message']}"
-                    llm_status.classes('text-positive' if res['success'] else 'text-negative')
+                # 2. LLM Settings
+                with create_section('LLM Configuration', 'psychology'):
+                    form_data['LLM_BASE_URL'] = ui.input('LLM Base URL', value=current_config.get('LLM_BASE_URL', '')).classes('w-full').props('outlined dense')
+                    form_data['LLM_API_KEY'] = ui.input('LLM API Key', value=current_config.get('LLM_API_KEY', ''), password=True, password_toggle_button=True).classes('w-full').props('outlined dense autocomplete="on"')
+                    form_data['LLM_MODEL'] = ui.input('LLM Model', value=current_config.get('LLM_MODEL', 'gpt-4o-mini')).classes('w-full').props('outlined dense')
+                    
+                    with ui.row().classes('w-full gap-4'):
+                        form_data['LLM_MAX_TOKENS'] = ui.input('Max Tokens', value=current_config.get('LLM_MAX_TOKENS', '4096')).classes('flex-1').props('outlined dense type="number"')
+                        form_data['LLM_TEMPERATURE'] = ui.input('Temperature', value=current_config.get('LLM_TEMPERATURE', '0.1')).classes('flex-1').props('outlined dense type="number" step="0.1" min="0" max="2"')
+                    
+                    async def test_llm():
+                        llm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)
+                        res = await asyncio.to_thread(config_manager.test_llm_connection, form_data['LLM_API_KEY'].value, form_data['LLM_BASE_URL'].value, form_data['LLM_MODEL'].value)
+                        llm_status.text = f"{('✅' if res['success'] else '❌')} {res['message']}"
+                        llm_status.classes('text-positive' if res['success'] else 'text-negative')
 
-                # Test Connection area
-                with ui.column().classes('gap-1 mt-2'):
-                    llm_status = ui.label().classes('text-xs h-4')
-                    ui.button('Test Connection', on_click=test_llm).props('outline dense text-xs').classes('w-40')
+                    # Test Connection area
+                    with ui.column().classes('gap-1 mt-2'):
+                        llm_status = ui.label().classes('text-xs h-4')
+                        ui.button('Test Connection', on_click=test_llm).props('outline dense text-xs').classes('w-40')
 
-            # 3. Search Provider Settings
-            with create_section('Search Providers (Optional)', 'search'):
-                ui.label('Comma-separated list (duckduckgo, serper, serpapi)').classes('text-[10px] text-tertiary')
-                form_data['SEARCH_PROVIDERS'] = ui.input('Providers', value=current_config.get('SEARCH_PROVIDERS', 'duckduckgo')).classes('w-full').props('outlined dense')
-                form_data['SERPER_API_KEY'] = ui.input('Serper API Key', value=current_config.get('SERPER_API_KEY', ''), password=True).classes('w-full').props('outlined dense')
-                form_data['SERPAPI_KEY'] = ui.input('SerpAPI Key', value=current_config.get('SERPAPI_KEY', ''), password=True).classes('w-full').props('outlined dense')
+                # 3. Search Provider Settings
+                with create_section('Search Providers (Optional)', 'search'):
+                    ui.label('Comma-separated list (duckduckgo, serper, serpapi)').classes('text-[10px] text-tertiary')
+                    form_data['SEARCH_PROVIDERS'] = ui.input('Providers', value=current_config.get('SEARCH_PROVIDERS', 'duckduckgo')).classes('w-full').props('outlined dense')
+                    form_data['SERPER_API_KEY'] = ui.input('Serper API Key', value=current_config.get('SERPER_API_KEY', ''), password=True).classes('w-full').props('outlined dense autocomplete="on"')
+                    form_data['SERPAPI_KEY'] = ui.input('SerpAPI Key', value=current_config.get('SERPAPI_KEY', ''), password=True).classes('w-full').props('outlined dense autocomplete="on"')
 
-            # 4. Internal Staff Filtering
-            with create_section('Internal Staff Filtering', 'person_off'):
-                ui.label('Define who NOT to sync to CRM').classes('text-[10px] text-tertiary')
-                form_data['INTERNAL_DOMAINS'] = ui.input('Internal Domains (e.g. company.com)', value=current_config.get('INTERNAL_DOMAINS', '')).classes('w-full').props('outlined dense')
-                form_data['INTERNAL_EMAILS'] = ui.input('Internal Emails (e.g. staff@gmail.com)', value=current_config.get('INTERNAL_EMAILS', '')).classes('w-full').props('outlined dense')
+                # 4. Internal Staff Filtering
+                with create_section('Internal Staff Filtering', 'person_off'):
+                    ui.label('Define who NOT to sync to CRM').classes('text-[10px] text-tertiary')
+                    form_data['INTERNAL_DOMAINS'] = ui.input('Internal Domains (e.g. company.com)', value=current_config.get('INTERNAL_DOMAINS', '')).classes('w-full').props('outlined dense')
+                    form_data['INTERNAL_EMAILS'] = ui.input('Internal Emails (e.g. staff@gmail.com)', value=current_config.get('INTERNAL_EMAILS', '')).classes('w-full').props('outlined dense')
 
-            # 5. Email Filtering & Logic
-            with create_section('Email Processing Logic', 'filter_alt'):
-                form_data['CLASSIFICATION_STRATEGY'] = ui.select(['heuristic', 'llm', 'hybrid'], value=current_config.get('CLASSIFICATION_STRATEGY', 'hybrid'), label='Strategy').classes('w-full').props('outlined dense')
-                form_data['CLASSIFICATION_MODEL'] = ui.input('Classification Model Override', value=current_config.get('CLASSIFICATION_MODEL', 'gpt-4o-mini')).classes('w-full').props('outlined dense')
-                form_data['SUPPRESS_CATEGORIES'] = ui.input('Suppress Categories', value=current_config.get('SUPPRESS_CATEGORIES', 'promotional,newsletter,automated,spam')).classes('w-full').props('outlined dense')
-                form_data['ALLOWLIST_DOMAINS'] = ui.input('Force-Process (Allowlist)', value=current_config.get('ALLOWLIST_DOMAINS', '')).classes('w-full').props('outlined dense')
-                form_data['SUPPRESS_DOMAINS'] = ui.input('Force-Suppress (Blocklist)', value=current_config.get('SUPPRESS_DOMAINS', '')).classes('w-full').props('outlined dense')
-                form_data['LOG_SUPPRESSED'] = ui.switch('Log Suppressions to DB', value=current_config.get('LOG_SUPPRESSED', 'true').lower() == 'true').props('dense color=primary')
+                # 5. Email Filtering & Logic
+                with create_section('Email Processing Logic', 'filter_alt'):
+                    form_data['CLASSIFICATION_STRATEGY'] = ui.select(['heuristic', 'llm', 'hybrid'], value=current_config.get('CLASSIFICATION_STRATEGY', 'hybrid'), label='Strategy').classes('w-full').props('outlined dense')
+                    form_data['CLASSIFICATION_MODEL'] = ui.input('Classification Model Override', value=current_config.get('CLASSIFICATION_MODEL', 'gpt-4o-mini')).classes('w-full').props('outlined dense')
+                    form_data['SUPPRESS_CATEGORIES'] = ui.input('Suppress Categories', value=current_config.get('SUPPRESS_CATEGORIES', 'promotional,newsletter,automated,spam')).classes('w-full').props('outlined dense')
+                    form_data['ALLOWLIST_DOMAINS'] = ui.input('Force-Process (Allowlist)', value=current_config.get('ALLOWLIST_DOMAINS', '')).classes('w-full').props('outlined dense')
+                    form_data['SUPPRESS_DOMAINS'] = ui.input('Force-Suppress (Blocklist)', value=current_config.get('SUPPRESS_DOMAINS', '')).classes('w-full').props('outlined dense')
+                    form_data['LOG_SUPPRESSED'] = ui.switch('Log Suppressions to DB', value=current_config.get('LOG_SUPPRESSED', 'true').lower() == 'true').props('dense color=primary')
 
-            # 6. Persistence
-            with create_section('Database Settings', 'storage'):
-                form_data['PERSISTENCE_DB_PATH'] = ui.input('Database Path', value=current_config.get('PERSISTENCE_DB_PATH', 'eml_processing.db')).classes('w-full').props('outlined dense')
+                # 6. Persistence
+                with create_section('Database Settings', 'storage'):
+                    form_data['PERSISTENCE_DB_PATH'] = ui.input('Database Path', value=current_config.get('PERSISTENCE_DB_PATH', 'eml_processing.db')).classes('w-full').props('outlined dense')
 
             async def save_config():
                 # Extract values, handling Switch special case
@@ -1190,7 +1138,7 @@ def render_suppressed_tab(suppressed_tab, page_is_visible):
 def main_page():
     """Main page with tabbed interface"""
     app_dark_mode = apply_nexus_theme()
-    tabs, dashboard_tab, upload_tab, analytics_tab, suppressed_tab, config_tab = create_header_with_tabs(app_dark_mode)
+    tabs, dashboard_tab, upload_tab, suppressed_tab, config_tab = create_header_with_tabs(app_dark_mode)
     upload_tab_name = upload_tab.props['name']
 
     page_is_visible = {'value': True}
@@ -1216,7 +1164,6 @@ def main_page():
     with ui.tab_panels(tabs, value=dashboard_tab).classes('w-full flex-1 bg-transparent'):
         render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open)
         render_upload_tab(upload_tab, page_is_visible)
-        render_analytics_tab(analytics_tab)
         render_suppressed_tab(suppressed_tab, page_is_visible)
         render_config_tab(config_tab)
 

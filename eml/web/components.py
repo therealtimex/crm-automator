@@ -217,7 +217,6 @@ def create_header_with_tabs(dark_mode_handler, active_tab_name: str = 'dashboard
                 .props('indicator-color="blue-400" active-color="blue-400" dense no-caps') as tabs:
                 dashboard_tab = ui.tab('Dashboard', icon='dashboard')
                 upload_tab = ui.tab('Upload & Process', icon='upload')
-                analytics_tab = ui.tab('Analytics', icon='bar_chart')
                 suppressed_tab = ui.tab('Suppressed', icon='filter_list')
                 config_tab = ui.tab('Configuration', icon='settings')
 
@@ -236,7 +235,7 @@ def create_header_with_tabs(dark_mode_handler, active_tab_name: str = 'dashboard
                      ui.element('div').classes('w-2 h-2 rounded-full bg-green-500 animate-pulse')
                      ui.label('SYSTEM ONLINE').classes('desktop-only text-[10px] font-bold text-green-500 tracking-wider')
 
-    return tabs, dashboard_tab, upload_tab, analytics_tab, suppressed_tab, config_tab
+    return tabs, dashboard_tab, upload_tab, suppressed_tab, config_tab
 
 def create_stat_card(title: str, value: int, icon: str = None, color: str = None, trend: str = None, trend_value: str = None):
     """Create Nexus Glass stat card"""
