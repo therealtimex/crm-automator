@@ -131,8 +131,13 @@ print('✅ Configuration validated successfully')
 
 ### Process a Single Email
 
+**Tip:** Use `--dryrun` first to test without modifying your CRM.
+
 ```bash
-# Process a single .eml file
+# Process a single .eml file (Dry Run)
+uv run python eml/eml_automator.py "path/to/test-email.eml" --env-file ".env" --dryrun
+
+# Process a single .eml file (Live)
 uv run python eml/eml_automator.py "path/to/test-email.eml" --env-file ".env"
 ```
 

@@ -50,7 +50,7 @@ The semantic extraction engine powered by OpenAI-compatible LLMs and the `instru
 A local SQLite backend for long-term idempotency.
 
 - **Logic**: Tracks `resource_id` (e.g., `Message-ID` for emails or `File-Hash` for documents).
-- **Storage**: [eml/test-run/processed_resources.db](file:///Users/ledangtrung/rtGit/realtimex-ai-app-agents/crm-automator/eml/test-run/processed_resources.db).
+- **Storage**: `eml_processing.db` (SQLite) in current working directory (configurable via `PERSISTENCE_DB_PATH`).
 
 ## 3. Data Models (Pydantic)
 

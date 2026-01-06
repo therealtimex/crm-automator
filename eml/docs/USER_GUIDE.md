@@ -195,10 +195,13 @@ Options:
   --env-file PATH       Path to .env file (default: .env)
   --force, -f           Force reprocessing (ignore deduplication)
   --verbose, -v         Enable debug logging
+  --dryrun              Simulate processing without modifying CRM
   --api-key KEY         Override CRM_API_KEY
   --base-url URL        Override CRM_API_BASE_URL
   --llm-url URL         Override LLM_BASE_URL
   --llm-model MODEL     Override LLM_MODEL
+  --llm-max-tokens N    Override LLM_MAX_TOKENS
+  --llm-temperature N   Override LLM_TEMPERATURE
 ```
 
 ### Examples

@@ -49,6 +49,16 @@ LLM_API_KEY=sk-your-openai-api-key
 # LLM Model (Required)
 # Model name to use for analysis
 LLM_MODEL=gpt-4o-mini
+
+# LLM Max Tokens (Optional)
+# Maximum tokens for LLM response (default: 4096)
+# Increase this for local models like GPT-OSS or Qwen that are verbose
+LLM_MAX_TOKENS=4096
+
+# LLM Temperature (Optional)
+# Sampling temperature (0.0 - 2.0, default: 0.1)
+# Lower for deterministic extraction, higher for creativity
+LLM_TEMPERATURE=0.1
 ```
 
 **Supported Providers:**
@@ -315,6 +325,9 @@ uv run python eml/eml_automator.py "emails/" --llm-model "gpt-4o"
 
 # Override persistence DB path
 uv run python eml/eml_automator.py "emails/" --db-path "/tmp/custom.db"
+
+# Perform a dry run (no CRM changes)
+uv run python eml/eml_automator.py "emails/" --dryrun
 
 # Use custom .env file
 uv run python eml/eml_automator.py "emails/" --env-file "/path/to/custom.env"

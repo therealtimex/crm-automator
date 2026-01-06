@@ -142,6 +142,10 @@ ALLOWLIST_DOMAINS=@important-client.com,vip@partner.com
 # LLM model for classification (if using llm/hybrid strategy)
 CLASSIFICATION_MODEL=gpt-4o-mini  # Recommend cheap model
 
+# LLM Parameters
+LLM_MAX_TOKENS=4096  # Increase for verbose local models
+LLM_TEMPERATURE=0.1  # Keep low for consistent classification
+
 # Logging (suppressed emails stored in SQLite)
 LOG_SUPPRESSED=true
 ```

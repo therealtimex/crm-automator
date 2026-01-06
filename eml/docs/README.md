@@ -38,12 +38,15 @@ python3 eml/eml_automator.py "email.eml" --env-file ".env.production" --verbose
 **Supported Flags:**
 - `--verbose`, `-v`: Enable verbose logging (DEBUG level)
 - `--force`, `-f`: Force reprocessing even if EML was already processed
+- `--dryrun`: Simulate processing without modifying CRM
 - `--env-file`: Path to a custom `.env` file to load
 - `--api-key`: RealTimeX API Key
 - `--base-url`: RealTimeX Base URL
 - `--db-path`: Path to SQLite persistence database
 - `--llm-url`: LLM Base URL
 - `--llm-model`: LLM Model name
+- `--llm-max-tokens`: Max tokens for LLM response
+- `--llm-temperature`: LLM sampling temperature
 
 ---
 
