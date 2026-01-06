@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-01-06
+
+### Added
+- **Dry Run Mode**: New `--dryrun` CLI flag to simulate processing without modifying CRM data
+  - Validates extraction logic and API connectivity safely
+  - Logs "dryrun" status to database for auditing and analytics
+  - Generates mock IDs to simulate full workflow dependencies (Company -> Contact -> Deal)
+- **Configurable LLM**: Added support for custom LLM parameters
+  - New CLI args: `--llm-max-tokens` and `--llm-temperature`
+  - New UI fields in Configuration tab
+  - Critical for compatibility with local LLMs (e.g., GPT-OSS, Qwen) that need higher token limits
+- **Geographic Grounding**: Enhanced AI intelligence to prevent cross-region entity confusion
+  - Prioritizes currency symbols (VND, $), phone codes, and address footers
+  - Proactively includes location hints in search queries
+
+### Improved
+- **Web UI - Visuals**: Refined Nexus Glass theme for a cleaner, lighter look
+  - Reduced border weight and opacity for form fields globally
+  - Smoother hover states for interactive elements
+- **Web UI - Performance**: Removed redundant Analytics tab (Dashboard cards provide sufficient data)
+- **Web UI - Stability**:
+  - Fixed Plotly resize errors by enforcing fixed chart heights
+  - Replaced unstable `ui.json_editor` with robust `ui.code` blocks to prevent "update_editor" errors
+  - Fixed password field warnings by wrapping inputs in proper `<form>` elements
+
+### Fixed
+- **Pydantic Compatibility**: Resolved `dict()` deprecation warnings by migrating to `model_dump()`
+- **Initialization**: Fixed `TypeError` in LLM classifier initialization by correctly propagating config parameters
+
 ## [1.9.26] - 2026-01-02
 
 ### Refactored

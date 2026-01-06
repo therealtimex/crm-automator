@@ -29,7 +29,7 @@ try:
     __version__ = version("crm-automator")
 except PackageNotFoundError:
     # Fallback to hardcoded version if metadata is unavailable
-    __version__ = "1.5.1"
+    __version__ = "1.10.0"
 
 def get_project_version():
     """Returns the project version from package metadata."""
