@@ -255,7 +255,12 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
                                     summary_data = json.loads(ai_summary)
                                     ui.json_editor({'content': {'json': summary_data}}).classes('w-full')
                                 except:
-                                    ui.label(ai_summary).classes('text-sm text-gray-300 leading-relaxed whitespace-pre-wrap')
+                                    # Fallback if ai_summary is already a dict-like object (Pydantic model)
+                                    if hasattr(ai_summary, 'model_dump') or hasattr(ai_summary, 'dict'):
+                                        data = ai_summary.model_dump() if hasattr(ai_summary, 'model_dump') else ai_summary.dict()
+                                        ui.json_editor({'content': {'json': data}}).classes('w-full')
+                                    else:
+                                        ui.label(str(ai_summary)).classes('text-sm text-gray-300 leading-relaxed whitespace-pre-wrap')
 
                         # Suppression Info
                         if suppression_category or suppression_reason:
@@ -1016,6 +1021,10 @@ def render_config_tab(config_tab):
                 form_data['LLM_BASE_URL'] = ui.input('LLM Base URL', value=current_config.get('LLM_BASE_URL', '')).classes('w-full').props('outlined dense')
                 form_data['LLM_API_KEY'] = ui.input('LLM API Key', value=current_config.get('LLM_API_KEY', ''), password=True, password_toggle_button=True).classes('w-full').props('outlined dense')
                 form_data['LLM_MODEL'] = ui.input('LLM Model', value=current_config.get('LLM_MODEL', 'gpt-4o-mini')).classes('w-full').props('outlined dense')
+                
+                with ui.row().classes('w-full gap-4'):
+                    form_data['LLM_MAX_TOKENS'] = ui.input('Max Tokens', value=current_config.get('LLM_MAX_TOKENS', '4096')).classes('flex-1').props('outlined dense type="number"')
+                    form_data['LLM_TEMPERATURE'] = ui.input('Temperature', value=current_config.get('LLM_TEMPERATURE', '0.1')).classes('flex-1').props('outlined dense type="number" step="0.1" min="0" max="2"')
                 
                 async def test_llm():
                     llm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)

@@ -12,6 +12,7 @@ eml/__pycache__
 
 # dev docs
 dev-docs
+/gtm
 
 # testing
 /coverage

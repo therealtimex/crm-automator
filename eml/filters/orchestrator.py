@@ -35,6 +35,8 @@ class EmailFilterOrchestrator:
         classification_strategy: str = "hybrid",
         llm_client: Optional[openai.OpenAI] = None,
         llm_model: Optional[str] = None,
+        llm_max_tokens: int = 150,
+        llm_temperature: float = 0.3,
     ):
         """
         Initialize filter orchestrator.
@@ -46,6 +48,8 @@ class EmailFilterOrchestrator:
             classification_strategy: "heuristic", "llm", or "hybrid" (default)
             llm_client: OpenAI-compatible client for LLM classification
             llm_model: Model name for classification (default: from env or gpt-4o-mini)
+            llm_max_tokens: Max tokens for classification response
+            llm_temperature: Temperature for classification
         """
         # Load configuration from environment if not provided
         self.suppress_categories = suppress_categories or self._load_suppress_categories()
@@ -70,7 +74,12 @@ class EmailFilterOrchestrator:
 
             if final_client:
                 model = llm_model or os.environ.get("CLASSIFICATION_MODEL", "gpt-4o-mini")
-                self.llm_classifier = LLMEmailClassifier(final_client, model)
+                self.llm_classifier = LLMEmailClassifier(
+                    final_client, 
+                    model, 
+                    max_tokens=llm_max_tokens, 
+                    temperature=llm_temperature
+                )
 
                 # Run health check
                 if not self.llm_classifier.check_health():

@@ -91,15 +91,17 @@ class AnalysisResult(BaseModel):
     primary_contact: ParticipantInfo = Field(description="Primary person of interest (customer, lead, or main subject - NOT necessarily the email sender)")
     additional_contacts: List[ParticipantInfo] = Field(default_factory=list, description="Other people mentioned or participating in the email thread")
     company_details: Optional[CompanyDetails] = Field(None, description="Structured details about the company mentioned, especially if it's the sender's company")
-    company_search_query: Optional[str] = Field(None, description="A focused Google/Bing search query to find more info if company details are sparse in the text")
+    company_search_query: Optional[str] = Field(None, description="A focused Google/Bing search query to find more info. INCLUDE geographic hints (city/country) found in the text to ensure relevance.")
     suggested_tasks: List[ExtractedTask] = Field(description="Actionable items or tasks derived from the content, grounded to the context date")
     deal_info: Optional[DealInfo] = Field(None, description="Information about a potential sales opportunity, extracted if the intent is Sales or Demo")
 
 class IntelligenceLayer:
-    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, model: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, model: Optional[str] = None, max_tokens: int = 4096, temperature: float = 0.1):
         self.api_key = api_key or os.environ.get("LLM_API_KEY")
         self.base_url = base_url or os.environ.get("LLM_BASE_URL")
         self.model = model or os.environ.get("LLM_MODEL") or DEFAULT_MODEL
+        self.max_tokens = max_tokens
+        self.temperature = temperature
         
         if not self.base_url:
             logger.warning("LLM_BASE_URL is not set. Intelligence functions may fail.")
@@ -146,7 +148,8 @@ class IntelligenceLayer:
             "4. Extract social media profiles (LinkedIn, Twitter/X) from signatures and content.\n"
             "5. Identify the primary person of interest (customer/lead) as 'primary_contact'.\n"
             "6. List all other participants in 'additional_contacts'.\n"
-            "7. If multiple messages in a thread, focus on latest interaction for sentiment/intent."
+            "7. If multiple messages in a thread, focus on latest interaction for sentiment/intent.\n"
+            "8. Pay close attention to geographic cues (currency symbols like VND/$, phone codes, address footers) to ground the company location and prevent confusion with similar names in other regions."
         )
         
         try:
@@ -157,6 +160,8 @@ class IntelligenceLayer:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": full_prompt_text}
                 ],
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
             )
         except Exception as e:
             logger.error(f"LLM Analysis Error: {e}")
@@ -425,7 +430,9 @@ class IntelligenceLayer:
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": cleaned_text}
-                ]
+                ],
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
             )
         except Exception as e:
             logger.error(f"LLM parsing error for scraped content: {e}")
@@ -523,7 +530,9 @@ class IntelligenceLayer:
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": combined_text}
-                ]
+                ],
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
             )
         except Exception as e:
             logger.error(f"LLM parsing error for search results: {e}")

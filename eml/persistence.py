@@ -85,7 +85,7 @@ class PersistenceLayer:
                 email_date TEXT,
 
                 -- Processing Outcome
-                status TEXT NOT NULL CHECK(status IN ('success', 'suppressed', 'failed', 'skipped')),
+                status TEXT NOT NULL CHECK(status IN ('success', 'suppressed', 'failed', 'skipped', 'dryrun')),
                 processing_started_at TEXT NOT NULL,
                 processing_completed_at TEXT,
                 processing_duration_ms INTEGER,
@@ -175,8 +175,85 @@ class PersistenceLayer:
             )
         """)
 
+        # Migration to support dryrun status
+        self._ensure_status_constraint_includes_dryrun(conn)
+
         conn.commit()
         conn.close()
+
+    def _ensure_status_constraint_includes_dryrun(self, conn):
+        cursor = conn.cursor()
+        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='processing_log'")
+        res = cursor.fetchone()
+        if res and 'dryrun' not in res[0]:
+            logger.info("Migrating processing_log to support 'dryrun' status...")
+            
+            # 1. Rename old table
+            cursor.execute("ALTER TABLE processing_log RENAME TO processing_log_old")
+            
+            # 2. Create new table with updated constraint
+            cursor.execute("""
+                CREATE TABLE processing_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_path TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    file_hash TEXT,
+                    message_id TEXT,
+                    sender TEXT,
+                    recipient TEXT,
+                    subject TEXT,
+                    email_date TEXT,
+                    status TEXT NOT NULL CHECK(status IN ('success', 'suppressed', 'failed', 'skipped', 'dryrun')),
+                    processing_started_at TEXT NOT NULL,
+                    processing_completed_at TEXT,
+                    processing_duration_ms INTEGER,
+                    suppression_category TEXT,
+                    suppression_reason TEXT,
+                    crm_contacts_created INTEGER DEFAULT 0,
+                    crm_companies_created INTEGER DEFAULT 0,
+                    crm_activities_created INTEGER DEFAULT 0,
+                    crm_deals_created INTEGER DEFAULT 0,
+                    crm_tasks_created INTEGER DEFAULT 0,
+                    crm_error TEXT,
+                    crm_contacts_payload TEXT,
+                    crm_companies_payload TEXT,
+                    crm_activities_payload TEXT,
+                    crm_deals_payload TEXT,
+                    crm_tasks_payload TEXT,
+                    error_message TEXT,
+                    error_type TEXT,
+                    error_traceback TEXT,
+                    ai_summary TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # 3. Copy data
+            cursor.execute("PRAGMA table_info(processing_log_old)")
+            columns = [row[1] for row in cursor.fetchall()]
+            col_str = ", ".join(columns)
+            
+            try:
+                cursor.execute(f"INSERT INTO processing_log ({col_str}) SELECT {col_str} FROM processing_log_old")
+            except Exception as e:
+                logger.error(f"Migration failed during data copy: {e}")
+                # Try to restore
+                cursor.execute("DROP TABLE processing_log")
+                cursor.execute("ALTER TABLE processing_log_old RENAME TO processing_log")
+                raise
+                
+            # 4. Drop old table
+            cursor.execute("DROP TABLE processing_log_old")
+            
+            # 5. Recreate indexes
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_status ON processing_log(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_id ON processing_log(message_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sender ON processing_log(sender)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_processing_date ON processing_log(processing_started_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON processing_log(created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_hash ON processing_log(file_hash)")
+            
+            logger.info("Migration to support 'dryrun' status completed.")
 
     # ========== NEW: Comprehensive Processing Log Methods ==========
 

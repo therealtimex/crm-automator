@@ -76,16 +76,20 @@ REQUIRED OUTPUT FORMAT (JSON):
 
 Return ONLY valid JSON."""
 
-    def __init__(self, llm_client: openai.OpenAI, model: str = "gpt-4o-mini"):
+    def __init__(self, llm_client: openai.OpenAI, model: str = "gpt-4o-mini", max_tokens: int = 150, temperature: float = 0.3):
         """
         Initialize LLM classifier.
 
         Args:
             llm_client: OpenAI-compatible client (already configured)
             model: Model name (default: gpt-4o-mini for cost efficiency)
+            max_tokens: Max tokens for response (default: 150)
+            temperature: Sampling temperature (default: 0.3)
         """
         self.client = llm_client
         self.model = model
+        self.max_tokens = max_tokens
+        self.temperature = temperature
         self.enabled = True
         self.base_url = llm_client.base_url if hasattr(llm_client, 'base_url') else None
 
@@ -96,7 +100,7 @@ Return ONLY valid JSON."""
             timeout_threshold=3
         )
 
-        logger.info(f"Initialized LLM classifier with model: {model}")
+        logger.info(f"Initialized LLM classifier with model: {model}, max_tokens: {max_tokens}, temp: {temperature}")
 
     def check_health(self) -> bool:
         """
@@ -186,8 +190,8 @@ Return ONLY valid JSON."""
                         "content": prompt
                     }
                 ],
-                "temperature": 0.3,  # Lower for consistency
-                "max_tokens": 150,   # Keep response concise
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens,
                 "timeout": 30.0
             }
 

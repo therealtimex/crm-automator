@@ -69,7 +69,9 @@ class EMLProcessor:
         # Reuse the LLM client from intelligence layer for classification
         self.filter_orchestrator = EmailFilterOrchestrator(
             llm_client=intelligence.client.client if hasattr(intelligence, 'client') else None,
-            llm_model=os.environ.get("CLASSIFICATION_MODEL", "gpt-4o-mini")
+            llm_model=os.environ.get("CLASSIFICATION_MODEL", "gpt-4o-mini"),
+            llm_max_tokens=getattr(intelligence, 'max_tokens', 150),
+            llm_temperature=getattr(intelligence, 'temperature', 0.3)
         )
 
     def parse_eml(self, file_path: str):
@@ -392,7 +394,7 @@ class EMLProcessor:
                     ai_summary_dict = None
                     if analysis:
                         try:
-                            ai_summary_dict = analysis.dict() if hasattr(analysis, 'dict') else analysis.model_dump()
+                            ai_summary_dict = analysis.model_dump() if hasattr(analysis, 'model_dump') else analysis.dict()
                         except Exception as e:
                             logger.warning(f"Failed to serialize AI analysis: {e}")
 
@@ -599,13 +601,15 @@ class EMLProcessor:
                 ai_summary_dict = None
                 if analysis:
                     try:
-                        ai_summary_dict = analysis.dict() if hasattr(analysis, 'dict') else analysis.model_dump()
+                        ai_summary_dict = analysis.model_dump() if hasattr(analysis, 'model_dump') else analysis.dict()
                     except Exception as e:
                         logger.warning(f"Failed to serialize AI analysis: {e}")
 
+                final_status = 'dryrun' if getattr(self.crm, 'dry_run', False) else 'success'
+
                 self.db.complete_processing(
                     log_id,
-                    status='success',
+                    status=final_status,
                     processing_duration_ms=duration_ms,
                     crm_contacts_created=crm_contacts_created,
                     crm_companies_created=crm_companies_created,
@@ -664,6 +668,8 @@ def main():
     parser.add_argument("--db-path", help="Path to SQLite persistence DB (overrides PERSISTENCE_DB_PATH env)")
     parser.add_argument("--llm-url", help="LLM Base URL (overrides LLM_BASE_URL env)")
     parser.add_argument("--llm-model", help="LLM Model name (overrides LLM_MODEL env)")
+    parser.add_argument("--llm-max-tokens", type=int, help="Max tokens for LLM response (overrides LLM_MAX_TOKENS env)")
+    parser.add_argument("--llm-temperature", type=float, help="LLM sampling temperature (overrides LLM_TEMPERATURE env)")
     parser.add_argument("--env-file", help="Path to custom .env file")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging (DEBUG level)")
     parser.add_argument("--force", "-f", action="store_true", help="Force reprocessing even if EML was already processed")
@@ -671,6 +677,7 @@ def main():
     parser.add_argument("--ui", action="store_true", help="Launch web UI (localhost only, no authentication)")
     parser.add_argument("--port", type=int, default=8080, help="Port for web UI (default: 8080)")
     parser.add_argument("--browser", action="store_true", help="Automatically open browser when launching UI")
+    parser.add_argument("--dryrun", "--dry-run", action="store_true", help="Perform a dry run without modifying the CRM")
 
     args = parser.parse_args()
 
@@ -718,16 +725,31 @@ def main():
     final_llm_url = args.llm_url or os.environ.get("LLM_BASE_URL")
     final_llm_model = args.llm_model or os.environ.get("LLM_MODEL")
 
+    # New LLM settings
+    try:
+        final_llm_max_tokens = args.llm_max_tokens or int(os.environ.get("LLM_MAX_TOKENS", "4096"))
+    except ValueError:
+        logger.warning("Invalid LLM_MAX_TOKENS value, defaulting to 4096")
+        final_llm_max_tokens = 4096
+        
+    try:
+        final_llm_temperature = args.llm_temperature or float(os.environ.get("LLM_TEMPERATURE", "0.1"))
+    except ValueError:
+        logger.warning("Invalid LLM_TEMPERATURE value, defaulting to 0.1")
+        final_llm_temperature = 0.1
+
     if not final_api_key:
         logger.error("CRM_API_KEY not set via environment variable or --api-key flag. Exiting.")
         sys.exit(1)
     
     try:
-        client = RealTimeXClient(final_api_key, final_base_url)
+        client = RealTimeXClient(final_api_key, final_base_url, dry_run=args.dryrun)
         intelligence = IntelligenceLayer(
             api_key=os.environ.get("LLM_API_KEY"),
             base_url=final_llm_url,
-            model=final_llm_model
+            model=final_llm_model,
+            max_tokens=final_llm_max_tokens,
+            temperature=final_llm_temperature
         )
         persistence = PersistenceLayer(db_name=args.db_path or "eml_processing.db")
         

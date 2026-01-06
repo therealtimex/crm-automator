@@ -6,7 +6,7 @@ from typing import List, Optional, Dict
 logger = logging.getLogger(__name__)
 
 class RealTimeXClient:
-    def __init__(self, api_key: str, base_url: str):
+    def __init__(self, api_key: str, base_url: str, dry_run: bool = False):
         if not api_key:
             raise ValueError("CRM_API_KEY must be provided")
         self.headers = {
@@ -15,6 +15,12 @@ class RealTimeXClient:
         }
         self.base_url = base_url.rstrip("/")
         self.public_domains = {"gmail.com", "outlook.com", "yahoo.com", "hotmail.com", "icloud.com", "me.com", "msn.com"}
+        self.dry_run = dry_run
+        self._dry_run_id_counter = 1000000
+
+    def _get_next_dry_run_id(self):
+        self._dry_run_id_counter += 1
+        return self._dry_run_id_counter
 
     def is_public_domain(self, domain: str) -> bool:
         return domain.lower() in self.public_domains
@@ -52,10 +58,13 @@ class RealTimeXClient:
                     if data and len(data) > 0:
                         company_id = data[0].get("id")
                         if filtered_kwargs:
-                            try:
-                                requests.patch(f"{url}/{company_id}", headers=self.headers, json=filtered_kwargs, timeout=10)
-                            except Exception as e:
-                                logger.error(f"Failed to update existing company {company_id}: {e}")
+                            if self.dry_run:
+                                logger.info(f"[DryRun] Would update company {company_id} with {filtered_kwargs}")
+                            else:
+                                try:
+                                    requests.patch(f"{url}/{company_id}", headers=self.headers, json=filtered_kwargs, timeout=10)
+                                except Exception as e:
+                                    logger.error(f"Failed to update existing company {company_id}: {e}")
                         return company_id
             except Exception as e:
                 logger.warning(f"Website search failed during upsert: {e}")
@@ -72,10 +81,13 @@ class RealTimeXClient:
                 if data and len(data) > 0:
                     company_id = data[0].get("id")
                     if filtered_kwargs:
-                        try:
-                            requests.patch(f"{url}/{company_id}", headers=self.headers, json=filtered_kwargs, timeout=10)
-                        except Exception as e:
-                            logger.error(f"Failed to update existing company {company_id} by name: {e}")
+                        if self.dry_run:
+                            logger.info(f"[DryRun] Would update company {company_id} (by name) with {filtered_kwargs}")
+                        else:
+                            try:
+                                requests.patch(f"{url}/{company_id}", headers=self.headers, json=filtered_kwargs, timeout=10)
+                            except Exception as e:
+                                logger.error(f"Failed to update existing company {company_id} by name: {e}")
                         return company_id
         except Exception as e:
             logger.warning(f"Name search failed: {e}")
@@ -85,6 +97,11 @@ class RealTimeXClient:
             payload["website"] = website
         payload.update(filtered_kwargs)
         
+        if self.dry_run:
+            mock_id = self._get_next_dry_run_id()
+            logger.info(f"[DryRun] Would create company '{name}' with payload {payload}. Returning mock ID {mock_id}")
+            return mock_id
+
         try:
             response = requests.post(url, headers=self.headers, json=payload, timeout=10)
             if response.status_code in [200, 201]:
@@ -127,10 +144,13 @@ class RealTimeXClient:
                     if company_id: update_payload["company_id"] = company_id
                     update_payload.update(filtered_kwargs)
                     if update_payload:
-                        try:
-                            requests.patch(f"{url}/{contact_id}", headers=self.headers, json=update_payload, timeout=10)
-                        except Exception as e:
-                            logger.error(f"Failed to update existing contact {contact_id}: {e}")
+                        if self.dry_run:
+                            logger.info(f"[DryRun] Would update contact {contact_id} with {update_payload}")
+                        else:
+                            try:
+                                requests.patch(f"{url}/{contact_id}", headers=self.headers, json=update_payload, timeout=10)
+                            except Exception as e:
+                                logger.error(f"Failed to update existing contact {contact_id}: {e}")
                     return contact_id
         except Exception as e:
             logger.warning(f"Email search failed: {e}")
@@ -143,6 +163,11 @@ class RealTimeXClient:
         }
         payload.update(filtered_kwargs)
         
+        if self.dry_run:
+            mock_id = self._get_next_dry_run_id()
+            logger.info(f"[DryRun] Would create contact '{email_addr}' with payload {payload}. Returning mock ID {mock_id}")
+            return mock_id
+
         try:
             response = requests.post(url, headers=self.headers, json=payload, timeout=10)
             if response.status_code in [200, 201]:
@@ -169,6 +194,10 @@ class RealTimeXClient:
         for k, v in kwargs.items():
             if k in allowed_fields:
                 payload[k] = v
+
+        if self.dry_run:
+            logger.info(f"[DryRun] Would log activity (type={activity_type}, contact_id={contact_id}) with text preview: {text[:50]}...")
+            return True
 
         try:
             if files:
@@ -223,6 +252,13 @@ class RealTimeXClient:
             if k in allowed_fields:
                 payload[k] = v
 
+        if self.dry_run:
+            logger.info(f"[DryRun] Would log activity (with response) (type={activity_type}, contact_id={contact_id})")
+            if files:
+                # Mock return for attachment URL extraction
+                return True, {"data": {"attachments": [{"src": "http://dry-run/attachment.eml"}]}}
+            return True, {}
+
         try:
             if files:
                 # Multipart/form-data request
@@ -260,6 +296,10 @@ class RealTimeXClient:
         Upload files via a temporary activity and extract the attachment URL.
         This allows reusing the same uploaded file across multiple notes.
         """
+        if self.dry_run:
+             logger.info("[DryRun] Would upload file to get attachment URL")
+             return "http://dry-run/attachment.eml"
+
         try:
             headers = self.headers.copy()
             headers.pop("Content-Type", None)
@@ -311,6 +351,10 @@ class RealTimeXClient:
             if k in allowed_fields:
                 payload[k] = v
 
+        if self.dry_run:
+            logger.info(f"[DryRun] Would create task for contact {contact_id}: {payload}")
+            return True
+
         try:
             response = requests.post(
                 f"{self.base_url}/api-v1-tasks",
@@ -340,6 +384,11 @@ class RealTimeXClient:
         for k, v in kwargs.items():
             if k in allowed_fields:
                 payload[k] = v
+
+        if self.dry_run:
+            mock_id = self._get_next_dry_run_id()
+            logger.info(f"[DryRun] Would create deal '{name}' for company {company_id}: {payload}")
+            return mock_id
 
         try:
             response = requests.post(
