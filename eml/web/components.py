@@ -115,6 +115,20 @@ def apply_nexus_theme():
             .q-tab__indicator { height: 3px !important; border-radius: 3px 3px 0 0; }
             .q-tabs { height: 100%; }
 
+            /* --- Form Input Refinements (Thinner/Subtler Lines) --- */
+            .q-field--outlined .q-field__control:before {
+                border-color: rgba(0, 0, 0, 0.15); 
+            }
+            .body--dark .q-field--outlined .q-field__control:before {
+                border-color: rgba(255, 255, 255, 0.1);
+            }
+            .q-field--outlined:hover .q-field__control:before {
+                border-color: rgba(0, 0, 0, 0.3);
+            }
+            .body--dark .q-field--outlined:hover .q-field__control:before {
+                border-color: rgba(255, 255, 255, 0.25);
+            }
+
             /* --- Upload Component Fix --- */
             .q-uploader__list:not(:has(.q-uploader__file)) {
                 display: none !important;
