@@ -9,6 +9,7 @@ Functions:
     show_processing_detail: Display detailed processing information in a modal
 """
 
+import json
 from typing import Dict, Any
 from nicegui import ui
 from eml.web.components import status_badge
@@ -117,19 +118,13 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
                                     import json
                                     summary_data = json.loads(ai_summary)
                                     with ui.column().classes('w-full p-2 overflow-auto max-h-96'):
-                                        try:
-                                            ui.json_editor({'content': {'json': summary_data}}).classes('w-full')
-                                        except:
-                                            ui.code(json.dumps(summary_data, indent=2)).classes('w-full text-xs')
+                                        ui.code(json.dumps(summary_data, indent=2), language='json').classes('w-full')
                                 except:
                                     # Fallback if ai_summary is already a dict-like object (Pydantic model)
                                     if hasattr(ai_summary, 'model_dump') or hasattr(ai_summary, 'dict'):
                                         data = ai_summary.model_dump() if hasattr(ai_summary, 'model_dump') else ai_summary.dict()
                                         with ui.column().classes('w-full p-2 overflow-auto max-h-96'):
-                                            try:
-                                                ui.json_editor({'content': {'json': data}}).classes('w-full')
-                                            except:
-                                                ui.code(json.dumps(data, indent=2)).classes('w-full text-xs')
+                                            ui.code(json.dumps(data, indent=2), language='json').classes('w-full')
                                     else:
                                         ui.label(str(ai_summary)).classes('text-sm text-gray-300 leading-relaxed whitespace-pre-wrap')
 
@@ -195,10 +190,7 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
                                         import json
                                         data = json.loads(payload_json)
                                         with ui.column().classes('w-full p-2 overflow-auto max-h-64'):
-                                            try:
-                                                ui.json_editor({'content': {'json': data}}).classes('w-full')
-                                            except:
-                                                ui.code(json.dumps(data, indent=2)).classes('w-full text-xs')
+                                            ui.code(json.dumps(data, indent=2), language='json').classes('w-full')
                                     except:
                                         ui.label(str(payload_json)).classes('text-xs font-mono whitespace-pre-wrap p-2')
                             elif count > 0:
