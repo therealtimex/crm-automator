@@ -323,6 +323,21 @@ class EMLProcessor:
                         company_name = analysis.company_details.name or company_name
                         company_kwargs = analysis.company_details.model_dump(exclude={"name", "website", "email"})
 
+                # --- Person Enrichment (NEW) ---
+                if part_info and part_info.first_name and not (part_info.title and part_info.linkedin_url):
+                    # Trigger active search for sender or the LLM-identified primary contact
+                    is_primary = (analysis and analysis.primary_contact_email == email_lower)
+                    if is_sender or is_primary:
+                        full_name = f"{part_info.first_name} {part_info.last_name or ''}".strip()
+                        # We use the resolved company name to narrow the search
+                        enriched_person = self.ai.web_search_person(full_name, company=company_name, email=email_addr)
+                        if enriched_person:
+                            logger.info(f"Successfully enriched person data for {email_addr}")
+                            # Merge enriched data into part_info (prioritizing existing data if any)
+                            if not part_info.title: part_info.title = enriched_person.title
+                            if not part_info.linkedin_url: part_info.linkedin_url = enriched_person.linkedin_url
+                            if not part_info.background: part_info.background = enriched_person.background
+
                 # Upsert Company
                 company_id = None
                 if domain:

@@ -538,6 +538,71 @@ class IntelligenceLayer:
             logger.error(f"LLM parsing error for search results: {e}")
             logger.debug(f"Search results that failed to parse: {combined_text[:200]}...")
             return None
+    def web_search_person(self, name: str, company: Optional[str] = None, email: Optional[str] = None) -> Optional[ParticipantInfo]:
+        """
+        Enrich person data via web search (LinkedIn, Job Titles, etc.)
+        """
+        if not name:
+            return None
+            
+        search_query = f"{name}"
+        if company:
+            search_query += f" {company}"
+        if email and "@" in email:
+            search_query += f" {email}"
+        
+        search_query += " LinkedIn job title"
+        
+        logger.info(f"Enriching person data for: {search_query}")
+        
+        provider_order = os.environ.get("SEARCH_PROVIDERS", "duckduckgo,serper,serpapi").split(",")
+        
+        for provider in provider_order:
+            provider = provider.strip().lower()
+            try:
+                results = self._search_with_provider(provider, search_query, max_results=5)
+                if results:
+                    return self._parse_person_search_results(results, email=email)
+            except Exception as e:
+                logger.warning(f"Person search failed via {provider}: {e}")
+                continue
+                
+        return None
+
+    def _parse_person_search_results(self, results: List[Dict], email: Optional[str] = None) -> Optional[ParticipantInfo]:
+        """Parse person search results into ParticipantInfo."""
+        if not results:
+            return None
+
+        combined_text = "\n\n".join([f"**{r['title']}**\n{r['snippet']}" for r in results])
+        
+        if len(combined_text) > 2000:
+            combined_text = combined_text[:2000] + "..."
+
+        system_prompt = (
+            "Extract structured person information from search results.\n"
+            "Identify Job Title, Company, LinkedIn URL, and a brief background summary."
+        )
+
+        try:
+            participant = self.client.chat.completions.create(
+                model=self.model,
+                response_model=ParticipantInfo,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": combined_text}
+                ],
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+            )
+            # Ensure email is preserved
+            if email and not participant.email:
+                participant.email = email
+            return participant
+        except Exception as e:
+            logger.error(f"LLM person parsing error: {e}")
+            return None
+
     def hydrate_from_eesa(self, eesa_data: Dict, metadata: Optional[Dict] = None) -> Optional[AnalysisResult]:
         """
         Creates an AnalysisResult from EESA pre-processed metadata, skipping the LLM call.
