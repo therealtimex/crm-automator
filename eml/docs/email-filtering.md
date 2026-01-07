@@ -116,6 +116,25 @@ Body Preview: {first 500 chars}
 | **automated** | Auto-replies, out-of-office, delivery notifications | ⊘ **SUPPRESS** |
 | **spam** | Unwanted, suspicious, or explicitly suppressed emails | ⊘ **SUPPRESS** |
 
+## Tuning the LLM Classifier
+
+The LLM classifier's performance can be fine-tuned using `LLM_MAX_TOKENS` and `LLM_TEMPERATURE`.
+
+### Optimizing for Accuracy vs. Creativity
+
+| Parameter | Recommended Value | Use Case | Effect |
+|-----------|-------------------|----------|--------|
+| `LLM_TEMPERATURE` | **0.0 - 0.1** | Classification | **Strict, deterministic**. Ensures the model follows the JSON schema exactly and doesn't hallucinate categories. |
+| `LLM_TEMPERATURE` | **0.3 - 0.5** | Summary/Creative | Adds variety to summaries but increases risk of invalid JSON in classification. |
+| `LLM_MAX_TOKENS` | **150 - 300** | OpenAI (GPT-4o) | Sufficient for category + short reasoning. Keeps costs low. |
+| `LLM_MAX_TOKENS` | **1000 - 4096** | Local Models (Qwen) | **Required for verbose models**. Some local models "think out loud" or output full reasoning before JSON, needing more space. |
+
+### When to Adjust
+
+- **Truncated JSON Errors**: If you see "Failed to parse LLM response", increase `LLM_MAX_TOKENS`.
+- **Hallucinated Categories**: If the model invents categories like "Personal" or "Urgent", decrease `LLM_TEMPERATURE` to `0.0`.
+- **Verbose Reasoning**: If the model writes paragraphs instead of JSON, update the system prompt (requires code change) or lower temperature.
+
 ## Configuration
 
 ### Basic Configuration
