@@ -363,7 +363,12 @@ class EMLProcessor:
                 first_name = ""
                 last_name = ""
                 if name:
-                    parts = name.split(" ", 1)
+                    # Clean common patterns like "Doe, John"
+                    if "," in name and len(name.split(",")) == 2:
+                        last_part, first_part = name.split(",", 1)
+                        name = f"{first_part.strip()} {last_part.strip()}"
+                    
+                    parts = name.strip().split(" ", 1)
                     first_name = parts[0]
                     last_name = parts[1] if len(parts) > 1 else ""
 
