@@ -736,7 +736,7 @@ def render_upload_tab(upload_tab, page_is_visible):
             upload_card = ui.card().classes('w-full mb-4 overflow-hidden eml-upload-drop-zone cursor-pointer')
             with upload_card:
                 with ui.element('div').classes('relative w-full min-h-[200px]'):
-                    file_list_container = ui.column().classes('w-full')
+                    file_list_container = ui.column().classes('w-full relative z-20')
                     upload_component = ui.upload(
                         multiple=True, auto_upload=True, max_file_size=MAX_FILE_SIZE,
                         on_upload=handle_upload,
@@ -760,14 +760,16 @@ def render_upload_tab(upload_tab, page_is_visible):
                         const trigger = (e) => {{
                             if (e.target.closest('button') || e.target.closest('.q-btn')) return;
                             
-                            console.log('Triggering picker for:', uploaderId);
+                            // Try component method first
                             const el = document.getElementById('c' + uploaderId);
                             if (el && typeof el.pickFiles === 'function') {{
                                 el.pickFiles();
                             }} else if (window.run_method) {{
                                 window.run_method(uploaderId, 'pickFiles');
                             }} else {{
-                                document.querySelector('.q-uploader__input')?.click();
+                                // Fallback to input click
+                                const input = card.querySelector('.q-uploader__input');
+                                if (input) input.click();
                             }}
                         }};
 
@@ -782,14 +784,32 @@ def render_upload_tab(upload_tab, page_is_visible):
 
                         card.addEventListener('dragover', (e) => {{ e.preventDefault(); }});
 
-                        ['dragleave', 'drop'].forEach(eventName => {{
-                            card.addEventListener(eventName, () => {{
-                                card.style.borderColor = '';
-                                card.style.backgroundColor = '';
-                            }});
+                        card.addEventListener('dragleave', (e) => {{
+                            if (e.relatedTarget && card.contains(e.relatedTarget)) return;
+                            card.style.borderColor = '';
+                            card.style.backgroundColor = '';
                         }});
 
-                        console.log('✅ Upload drop zone initialized');
+                        card.addEventListener('drop', (e) => {{
+                            e.preventDefault();
+                            card.style.borderColor = '';
+                            card.style.backgroundColor = '';
+
+                            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {{
+                                const el = document.getElementById('c' + uploaderId);
+                                if (el && typeof el.addFiles === 'function') {{
+                                    el.addFiles(e.dataTransfer.files);
+                                }} else {{
+                                    // Fallback: Inject into internal input
+                                    const input = card.querySelector('.q-uploader__input');
+                                    if (input) {{
+                                        input.files = e.dataTransfer.files;
+                                        input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                                    }}
+                                }}
+                            }}
+                        }});
+
                         return true;
                     }};
 
