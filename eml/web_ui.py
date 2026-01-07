@@ -817,11 +817,13 @@ def render_upload_tab(upload_tab, page_is_visible):
                     update_file_display() # Refresh list after cleanup
 
                 ui.button('Start Processing', on_click=start_processing, icon='play_arrow').props('color=primary unelevated').bind_enabled_from(state, 'is_processing', lambda x: not x)
-                
+
                 async def clear_all():
                     for f in list(state.uploaded_files):
                         if f.exists(): f.unlink()
                     state.uploaded_files.clear()
+                    # Reset the NiceGUI upload component's internal state
+                    upload_component.reset()
                     update_file_display()
                     ui.notify('All files cleared', type='info')
 
