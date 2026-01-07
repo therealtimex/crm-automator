@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-01-06
+
+### Added
+- **Active Person Enrichment**: New multi-provider search capability to enrich contact profiles
+  - Automatically searches for LinkedIn profiles, current job titles, and professional backgrounds
+  - Merges web-found data with email text extraction for high-fidelity CRM contacts
+  - Configurable search provider priority (DuckDuckGo, Serper, SerpAPI)
+- **Improved Name Parsing**: Robust logic for accurate first/last name determination
+  - Automatically fixes "Last, First" header patterns (e.g., "Doe, John" -> "John Doe")
+  - Strips professional titles (Mr., Ms., Dr., PhD) for cleaner data
+  - Prioritizes full signature names over abbreviated header names (e.g., "J. Doe" -> "John Doe")
+  - Handles cultural name patterns and multi-part names intelligently
+- **Intelligence Documentation**: Created a comprehensive **Intelligence Layer Guide**
+  - Details extraction schemas, geographic grounding, and enrichment cascades
+  - Provides troubleshooting tips for LLM hallucinations and parse errors
+
+### Improved
+- **Documentation Overhaul**: Updated all major guides (User Guide, Technical Spec, Email Filtering)
+  - Unified versioning and feature parity across all docs
+  - Added "Dry Run" and "Person Enrichment" sections to the User Guide
+  - Fixed special character formatting and broken references
+- **Web UI - UX Polish**: 
+  - Globally reduced form field border weight for a lighter, modern "Glass" aesthetic
+  - Improved hover state contrast for input fields
+  - Simplified navigation by removing the redundant Analytics tab
+- **Web UI - Robustness**:
+  - Replaced unstable JSON editors with static `ui.code` blocks to prevent "update_editor" runtime errors
+  - Fixed client-side Plotly crashes by enforcing fixed heights for all chart containers
+  - Wrapped configuration fields in proper `<form>` elements to fix password manager warnings
+
 ## [1.10.0] - 2026-01-06
 
 ### Added
