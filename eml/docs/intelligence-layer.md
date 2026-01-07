@@ -6,8 +6,9 @@ The Intelligence Layer is the "brain" of CRM Automator. It uses Large Language M
 
 1.  **Schema Extraction**: Converts free text into Pydantic models (`AnalysisResult`, `CompanyDetails`, `ParticipantInfo`).
 2.  **Geographic Grounding**: Detects location context to distinguish between entities with similar names (e.g., "Savills Poland" vs "Savills Vietnam").
-3.  **Company Enrichment**: actively searches the web to fill in missing company details (Sector, Revenue, Headcount).
-4.  **Date Grounding**: Converts relative dates ("next Friday") into ISO-8601 timestamps based on the email's sent date.
+3.  **Active Person Enrichment**: Searches the web to find LinkedIn profiles, job titles, and professional backgrounds for key contacts.
+4.  **Company Enrichment**: actively searches the web to fill in missing company details (Sector, Revenue, Headcount).
+5.  **Date Grounding**: Converts relative dates ("next Friday") into ISO-8601 timestamps based on the email's sent date.
 
 ## How Extraction Works
 
@@ -24,6 +25,15 @@ The system uses [instructor](https://github.com/jxnl/instructor) to force the LL
 | `company_details` | Structured company profile | Enriched via Search/Scraping |
 | `suggested_tasks` | Action items (e.g., "Follow up on invoice") | Derived from content |
 | `deal_info` | Opportunity details (Amount, Stage) | Extracted if Intent=Sales |
+
+## Improved Name Parsing
+
+To ensure high-quality CRM data, the system implements robust name determination:
+
+1.  **Header Cleaning**: Automatically handles `"Last, First"` patterns in email headers (e.g., `"Doe, John"` becomes `"John Doe"`).
+2.  **Signature Prioritization**: Full names found in email signatures take precedence over abbreviated header names (e.g., `"John Doe"` vs `"J. Doe"`).
+3.  **Title Removal**: Automatically strips professional titles like `Mr.`, `Ms.`, `Dr.`, `PhD`, etc.
+4.  **Multi-part Names**: Intelligent handling of three-part names (e.g., `"Trung Le Dang"`) ensuring correct first/last name separation.
 
 ## Geographic Grounding
 
@@ -58,7 +68,18 @@ The enrichment pipeline runs automatically when company details are sparse.
     *   Tools: `DuckDuckGo` (Free), `Serper` (Paid), `SerpAPI` (Paid).
     *   Action: Searches for the company name + location hints. Parses snippets into JSON.
 
-### Configuration
+## Active Person Enrichment
+
+When a primary contact or sender is missing key professional details, the system triggers an active search.
+
+### Logic Flow
+1.  **Identification**: Detects missing `title`, `linkedin_url`, or `background` for the sender or primary contact.
+2.  **Query Generation**: Constructs queries like `"{Full Name} {Company} LinkedIn job title"`.
+3.  **Web Search**: Uses configured search providers to find professional profiles and bios.
+4.  **Semantic Parsing**: The LLM parses search snippets to extract the most current job title and social links.
+5.  **Data Merging**: Enriched data is merged with info already found in the email text without overwriting verified details.
+
+## Configuration
 
 ```bash
 # Prioritize free search

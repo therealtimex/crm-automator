@@ -2,7 +2,7 @@
 
 **AI-Powered Email Processing for RealTimeX CRM**
 
-Version 1.5.1
+Version 1.10.0
 
 ---
 
@@ -60,9 +60,6 @@ python3 eml/eml_automator.py path/to/email.eml --env-file .env
 # macOS/Linux
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Windows
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-
 # Or via pip
 pip install uv
 ```
@@ -87,52 +84,6 @@ uv pip install -e .
 eml-automator email.eml --env-file .env
 ```
 
-**Benefits:**
-- ⚡ 10-100x faster than pip
-- 🔒 Automatic virtual environment management
-- 📦 No manual dependency installation
-- 🚀 Run directly from GitHub
-
-### Option 2: Traditional pip Install
-
-```bash
-cd crm-automator
-pip install -r requirements.txt
-
-# Run
-python3 eml/eml_automator.py email.eml --env-file .env
-```
-
-### Option 3: Package Install (Editable)
-
-## Sandboxed & Restricted Environments
-
-If you are running `eml-automator` in a restricted environment (e.g., Docker with read-only root, AWS Lambda, or a dedicated sandbox), keep the following in mind:
-
-### 1. Writable Database
-By default, the persistence database (`eml_processing.db`) is created in your **current working directory**. 
-
-If the current directory is not writable, configure a specific path:
-```bash
-export PERSISTENCE_DB_PATH=/tmp/eml_processing.db
-```
-
-### 2. Browser Cache (Scraping)
-If using `crawl4ai` for company enrichment, it may attempt to download browser binaries or create profile caches. In strictly read-only environments, it is recommended to pre-install dependencies or disable scraping fallback:
-```bash
-# Disable scraping by only providing search providers that don't need a browser
-export SEARCH_PROVIDERS=serper,serpapi
-```
-
-### 3. Environment Variables
-In a sandbox, you should ideally pass configuration via environment variables instead of a `.env` file to avoid file-system dependency.
-
-### Dependencies
-
-- Python 3.10+
-- OpenAI-compatible LLM API
-- RealTimeX CRM API access
-
 ---
 
 ## Configuration
@@ -151,7 +102,11 @@ LLM_BASE_URL=http://localhost:1234/v1
 LLM_API_KEY=not-needed
 LLM_MODEL=qwen/qwen3-4b-2507
 
-# Optional: Search Providers (for company enrichment)
+# Optional: LLM Parameters (High compatibility for local models)
+LLM_MAX_TOKENS=4096
+LLM_TEMPERATURE=0.1
+
+# Optional: Search Providers (for company/person enrichment)
 SEARCH_PROVIDERS=duckduckgo,serper,serpapi
 SERPER_API_KEY=your_serper_key  # Optional
 SERPAPI_KEY=your_serpapi_key    # Optional
@@ -163,15 +118,6 @@ PERSISTENCE_DB_PATH=./eml_processing.db
 INTERNAL_DOMAINS=yourcompany.com,partner.vn
 INTERNAL_EMAILS=sales.manager@gmail.com,support.temp@outlook.com
 ```
-
-### API Scopes Required
-
-Your CRM API key needs these scopes:
-- `contacts:write` - Create/update contacts
-- `companies:write` - Create/update companies
-- `activities:write` - Create notes
-- `tasks:write` - Create tasks
-- `deals:write` - Create deals
 
 ---
 
@@ -204,30 +150,6 @@ Options:
   --llm-temperature N   Override LLM_TEMPERATURE
 ```
 
-### Examples
-
-**Process a single email:**
-```bash
-python3 eml/eml_automator.py inbox/meeting-request.eml
-```
-
-**Force reprocess (bypass deduplication):**
-```bash
-python3 eml/eml_automator.py email.eml --force
-```
-
-**Debug mode:**
-```bash
-python3 eml/eml_automator.py email.eml --verbose
-```
-
-**Custom LLM:**
-```bash
-python3 eml/eml_automator.py email.eml \
-  --llm-url https://api.openai.com/v1 \
-  --llm-model gpt-4
-```
-
 ---
 
 ## Features
@@ -236,30 +158,17 @@ python3 eml/eml_automator.py email.eml \
 
 **All email participants get activity logs**, not just the sender.
 
-- **Sender**: "📧 Email Sent" note
-- **Recipients**: "📨 Email Received" note
-- **Company**: Optional company-level note
+- **Sender**: "📤 Email from..." note
+- **Recipients**: Linked to their respective contacts
+- **Company**: Optional company-level activity note
 
-**Benefits:**
-- Complete interaction history
-- Team visibility
-- Accurate relationship tracking
+### 👤 Improved Name Parsing
 
-### 📎 Smart Attachments
-
-**One upload, multiple references** for storage efficiency.
-
-- EML file uploaded once
-- URL reused across all notes
-- ~67% storage savings
-
-### ⏰ Accurate Timestamps
-
-Notes use the **email's Date header**, not processing time.
-
-- Chronological accuracy
-- Proper timeline tracking
-- Historical context preserved
+The system uses advanced logic to ensure high-quality contact data:
+- **Header Cleaning**: Automatically fixes `"Last, First"` patterns in email headers.
+- **Cultural Awareness**: Intelligent handling of three-part names.
+- **Title Removal**: Strips professional titles like `Mr.`, `Ms.`, `Dr.`, etc.
+- **Reconciliation**: Verified names from email signatures take precedence over header abbreviations.
 
 ### 🤖 AI-Powered Extraction
 
@@ -272,7 +181,7 @@ Notes use the **email's Date header**, not processing time.
 - **Tasks**: Auto-generated follow-ups with due dates
 - **Deals**: Opportunity detection and creation
 
-### �️ Internal vs External Contacts
+### 🏢 Internal vs External Contacts
 
 **Avoid CRM pollution from your own team:**
 
@@ -280,16 +189,17 @@ Notes use the **email's Date header**, not processing time.
 - **Smart Labels**: Notes are labeled `📤 Email from Internal Staff` or `📥 Email from External Contact`.
 - **Intelligent Linking**: Activities are linked to the most relevant customer contact, regardless of who sent the email.
 
-### �🔍 Company Enrichment
+### 🔍 Company & Person Enrichment
 
 **Multi-source data gathering:**
 
-1. **Website Scraping** (Primary)
+1. **Active Person Enrichment** (NEW)
+   - Searches for LinkedIn profiles and current job titles.
+   - Generates professional backgrounds for key contacts.
+2. **Website Scraping** (Primary)
    - Crawls homepage, /about, /contact
    - Extracts rich company details
-   - Uses Crawl4AI for clean markdown
-
-2. **Search Fallback** (Secondary)
+3. **Search Fallback** (Secondary)
    - DuckDuckGo (free)
    - Serper.dev (paid, better B2B data)
    - SerpAPI (paid, alternative)
@@ -301,15 +211,6 @@ Notes use the **email's Date header**, not processing time.
 - **Lifecycle Stages**: prospect, customer, churned, lost, archived
 - **Company Types**: customer, prospect, partner, vendor, competitor, internal
 - **Industries**: SaaS, E-commerce, Healthcare, Fintech, Manufacturing, etc.
-- **Qualification**: qualified, unqualified, duplicate, spam, test
-
-### 🔄 Deduplication
-
-**Prevents duplicate processing:**
-
-- Tracks processed emails by Message-ID
-- SQLite persistence layer
-- Use `--force` to override
 
 ---
 
@@ -320,78 +221,17 @@ Notes use the **email's Date header**, not processing time.
 Process multiple emails:
 
 ```bash
-for eml in inbox/*.eml; do
-  python3 eml/eml_automator.py "$eml" --env-file .env
-done
+uv run python eml/eml_automator.py "path/to/emails/"
 ```
 
-### Custom LLM Models
+### Dry Run Mode
 
-**Local Models** (LM Studio, Ollama):
+Test your configuration and extraction logic without pushing any data to the CRM:
+
 ```bash
-LLM_BASE_URL=http://localhost:1234/v1
-LLM_MODEL=qwen/qwen3-4b-2507
+python3 eml/eml_automator.py email.eml --dryrun
 ```
-
-**OpenAI:**
-```bash
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_API_KEY=sk-...
-LLM_MODEL=gpt-4
-```
-
-**Anthropic Claude:**
-```bash
-LLM_BASE_URL=https://api.anthropic.com/v1
-LLM_API_KEY=sk-ant-...
-LLM_MODEL=claude-3-sonnet-20240229
-```
-
-### Search Provider Configuration
-
-**Free Only:**
-```bash
-SEARCH_PROVIDERS=duckduckgo
-```
-
-**Paid Priority:**
-```bash
-SEARCH_PROVIDERS=serper,duckduckgo
-SERPER_API_KEY=your_key
-```
-
-**Disable Search (Website Only):**
-```bash
-SEARCH_PROVIDERS=
-```
-
-### Integration with Email Clients
-
-**Gmail (via IMAP):**
-```python
-import imaplib
-import email
-
-mail = imaplib.IMAP4_SSL('imap.gmail.com')
-mail.login('user@gmail.com', 'password')
-mail.select('inbox')
-
-_, data = mail.search(None, 'UNSEEN')
-for num in data[0].split():
-    _, msg_data = mail.fetch(num, '(RFC822)')
-    with open(f'email_{num}.eml', 'wb') as f:
-        f.write(msg_data[0][1])
-```
-
-**Outlook (via .msg to .eml conversion):**
-```bash
-# Install msgconvert
-sudo apt-get install libemail-outlook-message-perl
-
-# Convert
-msgconvert email.msg
-python3 eml/eml_automator.py email.eml
-```
+Dry run attempts are logged to the database with a distinct `dryrun` status.
 
 ---
 
@@ -399,76 +239,16 @@ python3 eml/eml_automator.py email.eml
 
 ### Common Issues
 
-**❌ "CRM_API_KEY not set"**
-```bash
-# Solution: Check .env file exists and is loaded
-cat .env | grep CRM_API_KEY
-python3 eml/eml_automator.py email.eml --env-file .env
-```
+**❌ "TypeError: LLMEmailClassifier.__init__() got unexpected keyword argument 'max_tokens'"**
+- **Solution**: Ensure you are running the latest version. This was a known issue in v1.9.x resolved in v1.10.0.
 
-**❌ "LLM Analysis Error: 400"**
-```bash
-# Solution: Email too long for model context
-# Use a larger context model or shorter emails
-LLM_MODEL=gpt-4-turbo  # 128K context
-```
+**❌ "Failed to parse LLM response" (Truncated JSON)**
+- **Solution**: Increase `LLM_MAX_TOKENS` in your `.env` or use `--llm-max-tokens 4096`. Local models often require higher limits.
 
-**❌ "Attachment icon shows but not clickable"**
-```bash
-# Solution: Fixed in v1.5.1
-# Ensure you're using latest version
-git pull origin main
-```
-
-**❌ "Contact created but no note"**
-```bash
-# Solution: Check API key has activities:write scope
-# Verify in CRM settings
-```
-
-**❌ "Company enrichment not working"**
-```bash
-# Solution: Check search provider configuration
-SEARCH_PROVIDERS=duckduckgo  # Ensure at least one provider
-```
-
-### Debug Mode
-
-Enable verbose logging:
-
-```bash
-python3 eml/eml_automator.py email.eml --verbose
-```
-
-Check logs for:
-- API request/response details
-- LLM extraction results
-- Search provider attempts
-- Attachment upload status
-
-### Performance Tips
-
-**Faster Processing:**
-- Use local LLM (LM Studio) instead of API calls
-- Reduce `max_chars` in `_smart_clean()` for shorter prompts
-- Disable company enrichment if not needed
-
-**Better Accuracy:**
-- Use GPT-4 or Claude for complex emails
-- Enable all search providers for company data
-- Increase LLM temperature for creative task generation
+**❌ "Hallucinated Company Info" (Wrong Region)**
+- **Solution**: The system now uses **Geographic Grounding**. Ensure your email signatures contain address footers or currency symbols to help the AI ground its search queries.
 
 ---
 
-## Support
-
-**Documentation:**
-- [API Reference](../dev-docs/API.md)
-- [Database Schema](../dev-docs/table-definition.md)
-- [Agent Integration](agent_sync_example.md)
-
-**Issues:**
-- GitHub: https://github.com/therealtimex/crm-automator/issues
-
-**Version:** 1.5.1  
-**Last Updated:** 2025-12-26
+**Version:** 1.10.0  
+**Last Updated:** 2026-01-06
