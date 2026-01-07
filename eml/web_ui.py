@@ -1219,5 +1219,24 @@ if __name__ == '__main__':
     try:
         run_ui()
     except KeyboardInterrupt:
-        print("\nStopping CRM Automator... Bye!")
+        # ANSI escape codes for colors
+        CYAN = '\033[96m'
+        GREEN = '\033[92m'
+        YELLOW = '\033[93m'
+        RESET = '\033[0m'
+        BOLD = '\033[1m'
+
+        # The "Arty" Banner
+        print(f"\n{CYAN}{BOLD}")
+        print(r"""
+   ______ ____  __  __
+  / ____// __ \/  |/  /
+ / /    / /_/ / /|_/ /
+/ /___ / _, _/ /  / /
+\____//_/ |_/_/  /_/   AUTOMATOR
+        """)
+        
+        # The "Ad" / Goodbye Message
+        print(f"   {YELLOW}⚡ Transforming your inbox into actionable business intelligence.")
+        print(f"   {GREEN}👋 See you next time! Shutting down gracefully...{RESET}\n")
         sys.exit(0)

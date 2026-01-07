@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.2] - 2026-01-07
+
+### Added
+- **Graceful Shutdown**: Implemented a professional ASCII banner and tagline when terminating the application (Ctrl+C).
+  - Added stylized "CRM AUTOMATOR" ASCII art.
+  - Integrated ANSI colors for better terminal visual feedback.
+  - Unified the shutdown experience across both CLI and Web UI.
+
 ## [1.11.1] - 2026-01-07
 
 ### Fixed

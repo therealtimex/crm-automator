@@ -668,7 +668,7 @@ class EMLProcessor:
 
 
 
-def main():
+def _main_impl():
     """Entry point for uvx/pip installation."""
     import argparse
     import sys
@@ -876,9 +876,31 @@ def main():
         logger.critical(f"Fatal error during processing: {e}", exc_info=True)
         sys.exit(1)
 
-if __name__ == "__main__":
+def main():
     try:
-        main()
+        sys.exit(_main_impl())
     except KeyboardInterrupt:
-        print("\nOperation cancelled by user. Bye!")
+        # ANSI escape codes for colors
+        CYAN = '\033[96m'
+        GREEN = '\033[92m'
+        YELLOW = '\033[93m'
+        RESET = '\033[0m'
+        BOLD = '\033[1m'
+
+        # The "Arty" Banner
+        print(f"\n{CYAN}{BOLD}")
+        print(r"""
+   ______ ____  __  __
+  / ____// __ \/  |/  /
+ / /    / /_/ / /|_/ /
+/ /___ / _, _/ /  / /
+\____//_/ |_/_/  /_/   AUTOMATOR
+        """)
+        
+        # The "Ad" / Goodbye Message
+        print(f"   {YELLOW}⚡ Transforming your inbox into actionable business intelligence.")
+        print(f"   {GREEN}👋 See you next time! Shutting down gracefully...{RESET}\n")
         sys.exit(0)
+
+if __name__ == "__main__":
+    main()
