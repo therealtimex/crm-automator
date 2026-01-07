@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1] - 2026-01-07
+
+### Fixed
+- **Web UI - File Upload**: Resolved an issue where the file list overlay blocked interactions with the uploader component.
+  - Adjusted z-index stacking to ensure the file list and "close" buttons are clickable.
+  - Implemented a robust manual drag-and-drop handler that works even when the underlying input is obscured.
+  - Added a fallback mechanism to inject files directly into the native input if the component API is inaccessible.
+  - Improved visual feedback for drag operations (preventing flicker on child elements).
+
 ## [1.11.0] - 2026-01-06
 
 ### Added
