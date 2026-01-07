@@ -16,7 +16,6 @@ dependencies = [
     "crawl4ai>=0.7.0",
     "tqdm",
     "nicegui>=3.4.1",
-    "plotly>=5.18.0",
 ]
 
 [project.optional-dependencies]
