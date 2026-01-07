@@ -62,11 +62,13 @@ from eml.web.components import (
     create_stat_card
 )
 from eml.web.analytics import (
-    AnalyticsEngine,
     get_database_stats,
     get_suppressed_emails
 )
 from eml.web.config import ConfigManager
+
+# Global persistence instance
+persistence_db = PersistenceLayer()
 
 async def process_files_async(files: List[Path], force: bool = False, verbose: bool = False):
     """Process uploaded files asynchronously"""
@@ -89,11 +91,22 @@ async def process_files_async(files: List[Path], force: bool = False, verbose: b
     try:
         state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] 🚀 Initializing CRM Automator...")
 
+        dry_run_mode = os.getenv("DRYRUN", "false").lower() == "true"
+        if dry_run_mode:
+            state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] 🛡️ Dry Run Mode is ENABLED")
+
         crm_client = RealTimeXClient(
             api_key=os.getenv("CRM_API_KEY"),
-            base_url=os.getenv("CRM_API_BASE_URL")
+            base_url=os.getenv("CRM_API_BASE_URL"),
+            dry_run=dry_run_mode
         )
-        intelligence = IntelligenceLayer()
+        intelligence = IntelligenceLayer(
+            api_key=os.getenv("LLM_API_KEY"),
+            base_url=os.getenv("LLM_BASE_URL"),
+            model=os.getenv("LLM_MODEL"),
+            max_tokens=int(os.getenv("LLM_MAX_TOKENS", "4096")),
+            temperature=float(os.getenv("LLM_TEMPERATURE", "0.1"))
+        )
         persistence = PersistenceLayer()
         processor = EMLProcessor(crm_client, intelligence, persistence)
 
@@ -378,14 +391,14 @@ def show_processing_detail(log_entry: Dict[str, Any], modal_state: Dict[str, boo
         dialog.open()
 
 
-def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
+async def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
     """Render the Dashboard tab content"""
     with ui.tab_panel(dashboard_tab):
         with ui.column().classes('w-full p-6 gap-6'):
             # Stats overview
             @ui.refreshable
-            def stats_cards_ui():
-                stats = get_database_stats()
+            async def stats_cards_ui():
+                stats = await asyncio.to_thread(get_database_stats)
                 total = stats['total'] if stats['total'] > 0 else 1
 
                 # Calculate percentages
@@ -400,7 +413,7 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
                     create_stat_card('SUPPRESSED', stats['suppressed'], 'block', trend='neutral', trend_value=f"{suppressed_pct:.0f}% filtered")
                     create_stat_card('FAILED', stats['failed'], 'error', trend='neutral' if stats['failed'] == 0 else 'down', trend_value=f"{failed_pct:.0f}% errors" if stats['failed'] > 0 else '0% errors')
 
-            stats_cards_ui()
+            await stats_cards_ui()
 
             # Recent Activity
             with ui.card().classes('w-full p-0 gap-0'):
@@ -430,13 +443,17 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
                 items_per_page = 10
                 activity_container = ui.column().classes('w-full')
 
-                def load_activity(page: int = 1, search_query: str = ''):
+                async def load_activity(page: int = 1, search_query: str = ''):
                     activity_container.clear()
                     last_refresh_time['value'] = datetime.now()
                     try:
-                        db = PersistenceLayer()
                         offset = (page - 1) * items_per_page
-                        recent_items, total_count = db.get_recent_activity(limit=items_per_page, offset=offset, search_query=search_query)
+                        recent_items, total_count = await asyncio.to_thread(
+                            persistence_db.get_recent_activity,
+                            limit=items_per_page, 
+                            offset=offset, 
+                            search_query=search_query
+                        )
                         total_pages = max(1, (total_count + items_per_page - 1) // items_per_page)
 
                         with activity_container:
@@ -473,21 +490,21 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
                     except Exception as e:
                         with activity_container: ui.label(f'Error: {e}').classes('text-negative text-caption')
 
-                def handle_page_change(page: int):
+                async def handle_page_change(page: int):
                     current_page['value'] = page
-                    load_activity(page, search_input.value or '')
+                    await load_activity(page, search_input.value or '')
 
-                def handle_search():
+                async def handle_search():
                     current_page['value'] = 1
-                    load_activity(1, search_input.value or '')
+                    await load_activity(1, search_input.value or '')
 
                 search_input.on('keydown.enter', handle_search)
-                load_activity()
+                await load_activity()
                 
                 # Adaptive Polling Logic
                 last_full_refresh = {'time': datetime.now()}
                 
-                def adaptive_refresh():
+                async def adaptive_refresh():
                     if not auto_refresh_enabled['value'] or modal_is_open['value'] or not page_is_visible['value']:
                         return
                         
@@ -497,8 +514,8 @@ def render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open):
                     
                     # 1s refresh when processing, 30s when idle
                     if is_active or seconds_since_refresh >= 30:
-                        stats_cards_ui.refresh()
-                        load_activity(current_page['value'], search_input.value or '')
+                        await stats_cards_ui.refresh()
+                        await load_activity(current_page['value'], search_input.value or '')
                         last_full_refresh['time'] = now
 
                 ui.timer(1.0, adaptive_refresh)
@@ -716,7 +733,7 @@ def render_upload_tab(upload_tab, page_is_visible):
                     notify_debounced('warning', 'Some files were rejected')
 
             # UI components
-            upload_card = ui.card().classes('w-full mb-4 overflow-hidden eml-upload-drop-zone')
+            upload_card = ui.card().classes('w-full mb-4 overflow-hidden eml-upload-drop-zone cursor-pointer')
             with upload_card:
                 with ui.element('div').classes('relative w-full min-h-[200px]'):
                     file_list_container = ui.column().classes('w-full')
@@ -724,7 +741,7 @@ def render_upload_tab(upload_tab, page_is_visible):
                         multiple=True, auto_upload=True, max_file_size=MAX_FILE_SIZE,
                         on_upload=handle_upload,
                         on_rejected=handle_rejected
-                    ).props('accept=.eml').classes('absolute inset-0 w-full h-full opacity-0 cursor-pointer').style('z-index: 10; pointer-events: auto;')
+                    ).props('accept=.eml').classes('absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer')
             
             update_file_display()
 
@@ -735,34 +752,27 @@ def render_upload_tab(upload_tab, page_is_visible):
 
                     window.initUploadDropZone = () => {{
                         const card = document.querySelector('.eml-upload-drop-zone');
-                        if (!card) {{
-                            return false;
-                        }}
-                        if (card.dataset.clickableInit === 'true') {{
-                            return true;
-                        }}
+                        if (!card) return false;
+                        if (card.dataset.clickableInit === 'true') return true;
 
                         card.dataset.clickableInit = 'true';
-                        card.style.cursor = 'pointer';
 
-                        const triggerFileBrowser = (e) => {{
-                            if (e.target.closest('button')) {{
-                                return;
-                            }}
-                            if (typeof runMethod === 'function') {{
-                                runMethod(uploaderId, 'pickFiles', []);
-                                return;
-                            }}
-                            let input = card.querySelector('input[type="file"]');
-                            if (!input) {{
-                                input = document.querySelector('input[type="file"]');
-                            }}
-                            if (input) {{
-                                input.click();
+                        const trigger = (e) => {{
+                            if (e.target.closest('button') || e.target.closest('.q-btn')) return;
+                            
+                            console.log('Triggering picker for:', uploaderId);
+                            const el = document.getElementById('c' + uploaderId);
+                            if (el && typeof el.pickFiles === 'function') {{
+                                el.pickFiles();
+                            }} else if (window.run_method) {{
+                                window.run_method(uploaderId, 'pickFiles');
+                            }} else {{
+                                document.querySelector('.q-uploader__input')?.click();
                             }}
                         }};
 
-                        card.addEventListener('click', triggerFileBrowser);
+                        // Use Capture phase (true) to ensure the card gets the click even if children are present
+                        card.addEventListener('click', trigger, true);
 
                         card.addEventListener('dragenter', (e) => {{
                             e.preventDefault();
@@ -770,9 +780,7 @@ def render_upload_tab(upload_tab, page_is_visible):
                             card.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
                         }});
 
-                        card.addEventListener('dragover', (e) => {{
-                            e.preventDefault();
-                        }});
+                        card.addEventListener('dragover', (e) => {{ e.preventDefault(); }});
 
                         ['dragleave', 'drop'].forEach(eventName => {{
                             card.addEventListener(eventName, () => {{
@@ -943,6 +951,7 @@ def render_config_tab(config_tab):
                 with create_section('CRM API Settings', 'cloud'):
                     form_data['CRM_API_BASE_URL'] = ui.input('CRM API Base URL', value=current_config.get('CRM_API_BASE_URL', '')).classes('w-full').props('outlined dense')
                     form_data['CRM_API_KEY'] = ui.input('CRM API Key', value=current_config.get('CRM_API_KEY', ''), password=True, password_toggle_button=True).classes('w-full').props('outlined dense autocomplete="on"')
+                    form_data['DRYRUN'] = ui.switch('Dry Run Mode (Simulate without pushing)', value=current_config.get('DRYRUN', 'false').lower() == 'true').props('dense color=primary')
                     
                     async def test_crm():
                         crm_status.text = '⏳ Testing...'; await asyncio.sleep(0.1)
@@ -1027,7 +1036,7 @@ def render_config_tab(config_tab):
             with ui.row().classes('w-full gap-2 mt-4 sticky bottom-0 bg-white/10 p-4 rounded-lg backdrop-blur-md z-10'):
                 ui.button('Apply & Save Changes', on_click=save_config, icon='save').props('color=primary unelevated').classes('flex-1')
 
-def render_suppressed_tab(suppressed_tab, page_is_visible):
+async def render_suppressed_tab(suppressed_tab, page_is_visible):
     """Render the Suppressed Emails tab content"""
     with ui.tab_panel(suppressed_tab):
         with ui.column().classes('w-full p-6 gap-4'):
@@ -1035,18 +1044,17 @@ def render_suppressed_tab(suppressed_tab, page_is_visible):
             last_refresh = {'value': datetime.now()}
 
             tab_state = {'category': 'All'}
-            db = PersistenceLayer()
 
             @ui.refreshable
-            def chips_ui():
+            async def chips_ui():
                 try:
-                    stats = db.get_suppression_breakdown()
-                    overall = db.get_processing_stats()
+                    stats = await asyncio.to_thread(persistence_db.get_suppression_breakdown)
+                    overall = await asyncio.to_thread(persistence_db.get_processing_stats)
                     total = overall.get('suppressed', 0)
                     
                     with ui.row().classes('gap-1 items-center'):
                         # 'All' Chip
-                        ui.chip(f"All ({total})", selectable=True, on_click=lambda: (tab_state.__setitem__('category', 'All'), refresh_table())) \
+                        ui.chip(f"All ({total})", selectable=True, on_click=lambda: (tab_state.__setitem__('category', 'All'), ui.timer(0.1, refresh_table, once=True))) \
                             .props('color=primary unelevated shadow-none text-xs') \
                             .bind_selected_from(tab_state, 'category', backward=lambda v: v == 'All')
                         
@@ -1056,24 +1064,25 @@ def render_suppressed_tab(suppressed_tab, page_is_visible):
                                     continue
                                 category_value = '__null__' if cat is None else cat
                                 category_label = 'null' if cat is None else cat
-                                ui.chip(f"{category_label} ({count})", selectable=True, on_click=lambda c=category_value: (tab_state.__setitem__('category', c), refresh_table())) \
+                                ui.chip(f"{category_label} ({count})", selectable=True, on_click=lambda c=category_value: (tab_state.__setitem__('category', c), ui.timer(0.1, refresh_table, once=True))) \
                                     .props('color=primary unelevated shadow-none text-xs') \
                                     .bind_selected_from(tab_state, 'category', backward=lambda v, c=category_value: v == c)
                         elif total > 0:
-                            ui.chip(f"unclassified ({total})", selectable=True, on_click=lambda: (tab_state.__setitem__('category', 'unknown'), refresh_table())) \
+                            ui.chip(f"unclassified ({total})", selectable=True, on_click=lambda: (tab_state.__setitem__('category', 'unknown'), ui.timer(0.1, refresh_table, once=True))) \
                                 .props('color=primary unelevated shadow-none text-xs') \
                                 .bind_selected_from(tab_state, 'category', backward=lambda v: v == 'unknown')
                 except Exception as e:
                     logger.error(f"Error rendering chips: {e}")
                     ui.label("Error loading categories").classes('text-xs text-red-400')
 
-            def refresh_table():
+            async def refresh_table():
                 last_refresh['value'] = datetime.now()
                 
                 try:
                     # 1. Fetch data for table
                     category_filter = tab_state['category'] if tab_state['category'] != 'All' else None
-                    emails = get_suppressed_emails(
+                    emails = await asyncio.to_thread(
+                        get_suppressed_emails,
                         limit=100, 
                         category=category_filter, 
                         search=search_input.value
@@ -1094,7 +1103,7 @@ def render_suppressed_tab(suppressed_tab, page_is_visible):
                         else: ui.label('No suppressed emails found').classes('text-tertiary italic text-center w-full py-10')
                     
                     # 3. Refresh Chips
-                    chips_ui.refresh()
+                    await chips_ui.refresh()
 
                 except Exception as e:
                     logger.error(f"Error refreshing suppressed table: {e}", exc_info=True)
@@ -1117,16 +1126,16 @@ def render_suppressed_tab(suppressed_tab, page_is_visible):
             
             with ui.row().classes('gap-2 mb-4 items-center'):
                 ui.label('Categories:').classes('text-xs text-tertiary uppercase tracking-wider mr-2')
-                chips_ui()
+                await chips_ui()
 
             table_container = ui.column().classes('w-full bg-black/5 dark:bg-white/5 rounded-lg overflow-hidden border border-black/10 dark:border-white/10')
-            refresh_table()
+            await refresh_table()
             search_input.on('keydown.enter', refresh_table)
             search_input.on('blur', refresh_table)
-            ui.timer(10.0, lambda: refresh_table() if auto_refresh['value'] and page_is_visible['value'] else None)
+            ui.timer(10.0, lambda: ui.timer(0.1, refresh_table, once=True) if auto_refresh['value'] and page_is_visible['value'] else None)
 
 @ui.page('/')
-def main_page():
+async def main_page():
     """Main page with tabbed interface"""
     app_dark_mode = apply_nexus_theme()
     tabs, dashboard_tab, upload_tab, suppressed_tab, config_tab = create_header_with_tabs(app_dark_mode)
@@ -1153,9 +1162,9 @@ def main_page():
     tabs.on_value_change(handle_tab_change)
 
     with ui.tab_panels(tabs, value=dashboard_tab).classes('w-full flex-1 bg-transparent'):
-        render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open)
+        await render_dashboard_tab(dashboard_tab, page_is_visible, modal_is_open)
         render_upload_tab(upload_tab, page_is_visible)
-        render_suppressed_tab(suppressed_tab, page_is_visible)
+        await render_suppressed_tab(suppressed_tab, page_is_visible)
         render_config_tab(config_tab)
 
 
@@ -1178,7 +1187,9 @@ def run_ui(host: str = '127.0.0.1', port: int = 8080, show_browser: bool = False
         favicon='📧',
         reload=False,
         show=show_browser,
-        storage_secret='crm-automator-secret' # Required for app.storage.user
+        storage_secret='crm-automator-secret', # Required for app.storage.user
+        binding_refresh_interval=0.1,
+        reconnect_timeout=10.0
     )
 
 

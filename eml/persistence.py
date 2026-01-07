@@ -9,6 +9,8 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 class PersistenceLayer:
+    _initialized = False
+
     def __init__(self, db_name: str = "eml_processing.db"):
         # Allow ENV to override db path for production
         env_db_path = os.environ.get("PERSISTENCE_DB_PATH")
@@ -59,7 +61,9 @@ class PersistenceLayer:
             self.db_path = os.path.join(tempfile.gettempdir(), db_name)
             logger.warning(f"PersistenceLayer: Configured path {db_dir} not writable. Falling back to temporary database: {self.db_path}")
 
-        self._init_db()
+        if not PersistenceLayer._initialized:
+            self._init_db()
+            PersistenceLayer._initialized = True
 
     def _init_db(self):
         os.makedirs(os.path.dirname(self.db_path) or '.', exist_ok=True)
