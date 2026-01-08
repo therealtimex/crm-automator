@@ -533,7 +533,7 @@ class EMLProcessor:
                 # Subsequent notes: reuse URL
                 elif eml_attachment_url:
                     note_kwargs["attachments"] = [{
-                        "url": eml_attachment_url,
+                        "src": eml_attachment_url,
                         "title": filename,
                         "type": "message/rfc822"
                     }]
@@ -564,7 +564,7 @@ class EMLProcessor:
                     "activity_type": "company_note",
                     "company_id": primary_company_id,
                     "attachments": [{
-                        "url": eml_attachment_url,
+                        "src": eml_attachment_url,
                         "title": filename,
                         "type": "message/rfc822"
                     }]
