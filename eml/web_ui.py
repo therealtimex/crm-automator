@@ -86,7 +86,15 @@ async def process_files_async(files: List[Path], force: bool = False, verbose: b
     root_logger.addHandler(web_handler)
 
     # Initialize components
-    load_dotenv()
+    # Reload environment variables to ensure latest config is used
+    try:
+        custom_env = app.storage.user.get('env_path')
+        config_manager = ConfigManager(env_path=custom_env)
+        load_dotenv(dotenv_path=config_manager.env_path, override=True)
+        state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ⚙️ Loaded configuration from {config_manager.env_path}")
+    except Exception as e:
+        state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Config reload warning: {e}")
+        load_dotenv(override=True)
 
     try:
         state.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] 🚀 Initializing CRM Automator...")
@@ -1051,7 +1059,7 @@ def render_config_tab(config_tab):
                 if ok: 
                     ui.notify(msg, type='positive')
                     # Force reload of environment
-                    load_dotenv(override=True)
+                    load_dotenv(dotenv_path=config_manager.env_path, override=True)
                 else: 
                     ui.notify(msg, type='negative')
 

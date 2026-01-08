@@ -69,7 +69,7 @@ class EMLProcessor:
         # Reuse the LLM client from intelligence layer for classification
         self.filter_orchestrator = EmailFilterOrchestrator(
             llm_client=intelligence.client.client if hasattr(intelligence, 'client') else None,
-            llm_model=os.environ.get("CLASSIFICATION_MODEL", "gpt-4o-mini"),
+            llm_model=os.environ.get("CLASSIFICATION_MODEL") or getattr(intelligence, 'model', None) or "gpt-4o-mini",
             llm_max_tokens=getattr(intelligence, 'max_tokens', 150),
             llm_temperature=getattr(intelligence, 'temperature', 0.3)
         )

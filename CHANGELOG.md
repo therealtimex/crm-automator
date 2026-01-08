@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.3] - 2026-01-07
+
+### Fixed
+- **Web UI - Config Reload**: Fixed an issue where configuration changes (CRM/LLM settings) were not immediately applied
+  - Implemented explicit reloading of environment variables from the active configuration file
+  - Ensures immediate feedback when switching APIs or models without restarting the application
+- **LLM Configuration**: Fixed a bug where `EmailFilterOrchestrator` ignored the global `LLM_MODEL` setting
+  - Now correctly prioritizes the configured model (e.g., via UI or env var) instead of defaulting to `gpt-4o-mini`
+  - Ensures the classification step uses the same model as the intelligence layer if not overridden
+
 ## [1.11.2] - 2026-01-07
 
 ### Added
