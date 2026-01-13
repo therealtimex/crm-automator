@@ -319,9 +319,38 @@ class EMLProcessor:
                                     if not getattr(analysis.company_details, field):
                                         setattr(analysis.company_details, field, getattr(search_results, field))
 
-                    if analysis.company_details and (is_sender or (part_info and part_info.company)):
+                    # Smartly determine if we should apply the AI-extracted company details to this participant
+                    should_apply_company_details = False
+                    
+                    if analysis.company_details:
+                        # 1. Base assumption: The AI extracted company details primarily for the sender
+                        if is_sender:
+                           should_apply_company_details = True
+                        
+                        # 2. Check for domain match if website is available
+                        elif analysis.company_details.website and domain:
+                            if domain.lower() in analysis.company_details.website.lower() or \
+                               analysis.company_details.website.lower() in domain.lower():
+                                should_apply_company_details = True
+                        
+                        # 3. Check for name match (fuzzy)
+                        if not should_apply_company_details and (company_name or (part_info and part_info.company)):
+                            # Use existing company name (from domain) or part_info company
+                            candidate_name = (part_info.company if part_info and part_info.company else company_name).lower()
+                            ai_name = analysis.company_details.name.lower()
+                            
+                            # Check for substring match (e.g. "Google" in "Google Inc")
+                            if candidate_name in ai_name or ai_name in candidate_name:
+                                should_apply_company_details = True
+
+                    if should_apply_company_details:
                         company_name = analysis.company_details.name or company_name
                         company_kwargs = analysis.company_details.model_dump(exclude={"name", "website", "email"})
+                    elif part_info and part_info.company:
+                        # Fallback: If we didn't apply AI details, but the participant has a specific company extraction
+                        # (e.g. "Western Tech" for a participant in a thread about Realtimex)
+                        # We use that specific name.
+                        company_name = part_info.company
 
                 # --- Person Enrichment (NEW) ---
                 if part_info and part_info.first_name and not (part_info.title and part_info.linkedin_url):

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.5] - 2026-01-13
+
+### Improved
+- **Smart Company Attribution**: Enhanced logic for applying AI-extracted company details to email participants.
+  - Automatically attributes company details to the sender.
+  - Implements domain-based matching between participant emails and extracted company websites.
+  - Adds fuzzy name matching to link participants to the correct company when multiple entities are discussed.
+  - Ensures accurate CRM data mapping even in complex email threads with multiple organizations.
+
 ## [1.11.4] - 2026-01-07
 
 ### Fixed
